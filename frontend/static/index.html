@@ -1159,7 +1159,7 @@ async function sendTextMessage() {
         fd.append('message', text);
         fd.append('conversation_id', currentConversationId);
 
-        const response = await fetch(`${API}/api/chat/stream`, {method:'POST', body:fd});
+        const response = await fetch(`${API}/api/chat/stream-legacy`, {method:'POST', body:fd});
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullText = '';

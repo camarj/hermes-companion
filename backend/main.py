@@ -7,6 +7,7 @@ the external agent (see `agent_bridge.py`).
 """
 
 import json
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -24,7 +25,7 @@ from database import (
     update_conversation_title, touch_conversation, delete_conversation,
     add_message, get_messages,
 )
-from agent_bridge import call_agent
+from agent_bridge import call_agent, call_agent_stream
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -227,12 +228,36 @@ async def api_chat(
     }
 
 
-@app.post("/api/chat/stream")
-async def api_chat_stream(
+def _chunk_for_streaming(text: str, chunk_chars: int = 40):
+    """Split text into smaller chunks on word boundaries so the frontend
+    animates the answer streaming in instead of rendering it as one blob.
+    Hermes -z returns a single payload, so chunking happens on our side."""
+    if not text:
+        return
+    pos = 0
+    n = len(text)
+    while pos < n:
+        end = min(pos + chunk_chars, n)
+        if end < n:
+            space_idx = text.rfind(" ", pos, end)
+            if space_idx > pos:
+                end = space_idx + 1
+        yield text[pos:end]
+        pos = end
+
+
+@app.post("/api/chat/stream-legacy")
+async def api_chat_stream_legacy(
     request: Request,
     message: str = Form(...),
     conversation_id: Optional[str] = Form(None),
 ):
+    """Custom SSE shape consumed by the legacy single-file frontend at /.
+
+    Kept around until migration PR 6 (switchover) so the old HTML keeps
+    working. The new React app at /static/next/ uses /api/chat/stream which
+    speaks the Vercel AI SDK 6 UI Message Stream Protocol.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -275,6 +300,125 @@ async def api_chat_stream(
         generate(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/api/chat/stream")
+async def api_chat_stream(
+    request: Request,
+    message: str = Form(...),
+    conversation_id: Optional[str] = Form(None),
+):
+    """Vercel AI SDK 6 UI Message Stream Protocol.
+
+    Each frame is `data: <JSON>\\n\\n`. The frontend uses `useChat` from
+    `@ai-sdk/react` against this endpoint. Tool input/output frames wrap the
+    `call_agent` invocation; intermediate stdout paragraphs become reasoning
+    parts (collapsible chain-of-thought); the final paragraph streams as
+    text deltas. Conversation metadata is sent as a custom `data-conversation`
+    part so the React app can update its sidebar after a new conversation is
+    created server-side.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if conversation_id:
+        _require_conversation_access(user, conversation_id)
+    else:
+        conv = create_conversation(user["id"])
+        conversation_id = conv["id"]
+
+    add_message(conversation_id, "user", message)
+    tool_call_id = f"call_{uuid.uuid4().hex[:12]}"
+    message_id = f"msg_{uuid.uuid4().hex[:12]}"
+    text_id = f"t_{uuid.uuid4().hex[:8]}"
+
+    def frame(obj: dict) -> str:
+        return f"data: {json.dumps(obj)}\n\n"
+
+    async def generate():
+        full_answer_parts: list[str] = []
+        text_started = False
+        reasoning_index = 0
+
+        yield frame({"type": "start", "messageId": message_id})
+        yield frame({
+            "type": "tool-input-start",
+            "toolCallId": tool_call_id,
+            "toolName": "call_agent",
+        })
+        yield frame({
+            "type": "tool-input-available",
+            "toolCallId": tool_call_id,
+            "toolName": "call_agent",
+            "input": {"query": message},
+        })
+
+        try:
+            async for kind, content in call_agent_stream(
+                message,
+                user_name=user["name"],
+                user_id=user["id"],
+                user_role=user.get("role", ""),
+            ):
+                if kind == "reasoning":
+                    reasoning_index += 1
+                    rid = f"r_{reasoning_index}_{uuid.uuid4().hex[:6]}"
+                    yield frame({"type": "reasoning-start", "id": rid})
+                    yield frame({"type": "reasoning-delta", "id": rid, "delta": content})
+                    yield frame({"type": "reasoning-end", "id": rid})
+                else:  # "text"
+                    if not text_started:
+                        yield frame({
+                            "type": "tool-output-available",
+                            "toolCallId": tool_call_id,
+                            "output": {"ok": True},
+                        })
+                        yield frame({"type": "text-start", "id": text_id})
+                        text_started = True
+                    for chunk in _chunk_for_streaming(content):
+                        full_answer_parts.append(chunk)
+                        yield frame({
+                            "type": "text-delta",
+                            "id": text_id,
+                            "delta": chunk,
+                        })
+        except Exception as exc:
+            yield frame({
+                "type": "error",
+                "errorText": f"{type(exc).__name__}: {exc}",
+            })
+            yield "data: [DONE]\n\n"
+            return
+
+        if text_started:
+            yield frame({"type": "text-end", "id": text_id})
+
+        full_text = "".join(full_answer_parts).strip()
+        if full_text:
+            add_message(conversation_id, "assistant", full_text)
+            touch_conversation(conversation_id)
+        conv = get_conversation(conversation_id)
+
+        yield frame({
+            "type": "data-conversation",
+            "data": {
+                "id": conversation_id,
+                "title": conv["title"] if conv else None,
+            },
+        })
+        yield frame({"type": "finish"})
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "x-vercel-ai-ui-message-stream": "v1",
+        },
     )
 
 
