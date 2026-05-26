@@ -133,7 +133,7 @@ thing yourself.
 
 | File | What it does |
 |---|---|
-| `backend/main.py` | FastAPI app: auth cookie, CRUD, text chat with SSE streaming |
+| `backend/main.py` | FastAPI app: auth cookie, CRUD, text chat (direct agent passthrough via SSE) |
 | `backend/realtime.py` | WebSocket proxy to OpenAI Realtime — VAD config, server speakers, vision frame injection, half-duplex echo suppression |
 | `backend/agent_bridge.py` | Runs your configured `agent.command` as a subprocess |
 | `backend/config.py` | Loads `config.yaml`, builds the system prompt |
@@ -143,7 +143,8 @@ thing yourself.
 
 ## Modes
 
-**CHAT** — text only with streaming. Cheapest. No mic needed.
+**CHAT** — text only. Every message is a direct passthrough to your configured
+agent (no OpenAI in the loop). No mic needed.
 
 **VOICE** — full Realtime. Speak, get audio back. The model can call your
 agent mid-turn (it'll utter a brief "one moment" before doing so).
