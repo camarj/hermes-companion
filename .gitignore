@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+venv/
+.venv/
+env/
+
+# Local config + secrets
+config.yaml
+.env
+.env.*
+!.env.example
+
+# Databases (user data, not code)
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# TLS certs
+certs/
+*.pem
+*.key
+*.crt
+
+# Logs
+*.log
+logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (if frontend ever grows)
+node_modules/
