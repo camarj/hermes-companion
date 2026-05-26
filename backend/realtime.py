@@ -99,13 +99,17 @@ async def inject_vision_message(
     if openai_ws is None:
         return False
 
+    lang_hint = f" Respond in {config.language_name()}."
     content: list[dict] = []
     if prompt_text:
-        content.append({"type": "input_text", "text": prompt_text})
+        content.append({"type": "input_text", "text": prompt_text + lang_hint})
     else:
         content.append({
             "type": "input_text",
-            "text": "Here's an image of what I'm seeing right now. Use it as silent context.",
+            "text": (
+                "Here's an image of what I'm seeing right now. Use it as silent context."
+                + lang_hint
+            ),
         })
     content.append({"type": "input_image", "image_url": image_data_url})
 

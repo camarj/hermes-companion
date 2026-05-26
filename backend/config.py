@@ -63,6 +63,21 @@ def default_language() -> str:
     return str(CONFIG.get("default_language") or "en")
 
 
+_LANGUAGE_NAMES = {
+    "en": "English",
+    "es": "Spanish",
+    "pt": "Portuguese",
+    "fr": "French",
+    "de": "German",
+    "it": "Italian",
+}
+
+
+def language_name() -> str:
+    code = default_language().lower()
+    return _LANGUAGE_NAMES.get(code, code)
+
+
 def personality() -> str:
     return str(CONFIG.get("personality") or "Warm, professional, helpful.")
 

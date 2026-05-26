@@ -1,15 +1,12 @@
 """
 hermes-companion — FastAPI backend.
 
-Multi-user voice + chat assistant. Voice goes through the OpenAI Realtime
-API (WebSocket proxy in `realtime.py`); text chat goes through a generic
-OpenAI-compatible Chat Completions endpoint. Both can optionally route
-heavy/live-data requests to an external agent (see `agent_bridge.py`).
+Multi-user voice + chat assistant. Voice/vision go through the OpenAI Realtime
+API (WebSocket proxy in `realtime.py`); text chat is a direct passthrough to
+the external agent (see `agent_bridge.py`).
 """
 
-import os
 import json
-import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -17,7 +14,6 @@ from fastapi import FastAPI, WebSocket, UploadFile, File, Form, HTTPException, R
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, JSONResponse
-from openai import OpenAI
 
 import config
 from config import load_dotenv_if_present
@@ -26,7 +22,7 @@ from database import (
     get_user, list_users,
     create_conversation, get_conversation, list_conversations,
     update_conversation_title, touch_conversation, delete_conversation,
-    add_message, get_messages, get_conversation_context,
+    add_message, get_messages,
 )
 from agent_bridge import call_agent
 
@@ -36,140 +32,7 @@ from agent_bridge import call_agent
 
 load_dotenv_if_present()
 
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
-LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
-
 COOKIE_NAME = "companion_user"
-
-# Tool definition exposed to the text LLM. Same shape OpenAI / compatible
-# endpoints expect for function calling. Only included if an agent is
-# configured — otherwise the chat runs without tools.
-CHAT_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "call_agent",
-            "description": (
-                "Invoke the external agent for tasks that require live data, "
-                "real-world actions, or memory of past conversations "
-                "(calendar, email, files, web search, automations, scheduled "
-                "tasks, etc.). Don't use it for chitchat or general knowledge."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": (
-                            "Self-contained query for the agent. Include any "
-                            "relevant context from the conversation."
-                        ),
-                    }
-                },
-                "required": ["query"],
-            },
-        },
-    }
-] if config.agent_enabled() else []
-
-# ---------------------------------------------------------------------------
-# LLM Client
-# ---------------------------------------------------------------------------
-
-llm_client = OpenAI(
-    api_key=LLM_API_KEY if LLM_API_KEY else "dummy",
-    base_url=LLM_BASE_URL,
-)
-
-
-def _system_messages(user_context: str = "") -> list[dict]:
-    content = config.system_prompt_core()
-    if user_context:
-        content += f"\n\n═══ SESSION CONTEXT ═══\n{user_context}"
-    return [{"role": "system", "content": content}]
-
-
-async def chat_completion(messages: list[dict], user_context: str = "") -> str:
-    all_messages = _system_messages(user_context) + messages
-    response = llm_client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=all_messages,
-        temperature=0.7,
-        max_tokens=500,
-    )
-    return response.choices[0].message.content
-
-
-async def chat_completion_stream(messages: list[dict], user_context: str = ""):
-    """Stream LLM response as a sequence of ('text', str), ('tool_call', dict),
-    and ('error', str) events. The caller translates each into SSE.
-    """
-    all_messages = _system_messages(user_context) + messages
-    queue: asyncio.Queue = asyncio.Queue()
-    loop = asyncio.get_event_loop()
-
-    def _sync_stream():
-        try:
-            kwargs = dict(
-                model=LLM_MODEL,
-                messages=all_messages,
-                temperature=0.7,
-                max_tokens=600,
-                stream=True,
-            )
-            if CHAT_TOOLS:
-                kwargs["tools"] = CHAT_TOOLS
-                kwargs["tool_choice"] = "auto"
-            stream = llm_client.chat.completions.create(**kwargs)
-            partial_calls: dict[int, dict] = {}
-            for chunk in stream:
-                if not chunk.choices:
-                    continue
-                choice = chunk.choices[0]
-                delta = choice.delta
-
-                if getattr(delta, "content", None):
-                    loop.call_soon_threadsafe(
-                        queue.put_nowait, ("text", delta.content)
-                    )
-
-                if getattr(delta, "tool_calls", None):
-                    for tc in delta.tool_calls:
-                        idx = tc.index if tc.index is not None else 0
-                        slot = partial_calls.setdefault(
-                            idx, {"id": None, "name": "", "args": ""}
-                        )
-                        if tc.id:
-                            slot["id"] = tc.id
-                        fn = getattr(tc, "function", None)
-                        if fn:
-                            if fn.name:
-                                slot["name"] += fn.name
-                            if fn.arguments:
-                                slot["args"] += fn.arguments
-
-                if choice.finish_reason and partial_calls:
-                    for slot in partial_calls.values():
-                        loop.call_soon_threadsafe(
-                            queue.put_nowait, ("tool_call", slot)
-                        )
-                    partial_calls = {}
-        except Exception as exc:
-            loop.call_soon_threadsafe(
-                queue.put_nowait, ("error", f"{type(exc).__name__}: {exc}")
-            )
-        finally:
-            loop.call_soon_threadsafe(queue.put_nowait, None)
-
-    import threading
-    threading.Thread(target=_sync_stream, daemon=True).start()
-
-    while True:
-        item = await queue.get()
-        if item is None:
-            break
-        yield item
 
 
 # ---------------------------------------------------------------------------
@@ -196,18 +59,6 @@ def get_current_user(request: Request) -> Optional[dict]:
     if not user_id:
         return None
     return get_user(user_id)
-
-
-def _user_context_string(user: dict) -> str:
-    if user["is_shared_space"]:
-        return (
-            f"You are in a SHARED conversation ({user['name']}). Multiple team "
-            f"members may be reading. Address the group in plural when natural; "
-            f"don't assume which person is speaking unless they identify themselves."
-        )
-    if user.get("role"):
-        return f"You are talking with {user['name']} ({user['role']}). It's a private conversation."
-    return f"You are talking with {user['name']}. It's a private conversation."
 
 
 # ---------------------------------------------------------------------------
@@ -354,12 +205,13 @@ async def api_chat(
 
     add_message(conversation_id, "user", message)
 
-    context_msgs = get_conversation_context(conversation_id, max_messages=20)
-    llm_messages = [{"role": m["role"], "content": m["content"]} for m in context_msgs]
-    user_context = _user_context_string(user)
-
     try:
-        response_text = await chat_completion(llm_messages, user_context)
+        response_text = await call_agent(
+            message,
+            user_name=user["name"],
+            user_id=user["id"],
+            user_role=user.get("role", ""),
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -392,49 +244,28 @@ async def api_chat_stream(
         conversation_id = conv["id"]
 
     add_message(conversation_id, "user", message)
-
-    context_msgs = get_conversation_context(conversation_id, max_messages=20)
-    llm_messages = [{"role": m["role"], "content": m["content"]} for m in context_msgs]
-    user_context = _user_context_string(user)
+    tool_label = config.agent_label() or "agent"
 
     async def generate():
-        full_response = ""
+        yield f"data: {json.dumps({'type': 'tool_started', 'tool': tool_label, 'query': message})}\n\n"
 
-        async for event in chat_completion_stream(llm_messages, user_context):
-            kind, payload = event
+        try:
+            answer = await call_agent(
+                message,
+                user_name=user["name"],
+                user_id=user["id"],
+                user_role=user.get("role", ""),
+            )
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'tool_finished', 'tool': tool_label})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': f'{type(exc).__name__}: {exc}'})}\n\n"
+            return
 
-            if kind == "text":
-                full_response += payload
-                yield f"data: {json.dumps({'type': 'text', 'content': payload})}\n\n"
+        yield f"data: {json.dumps({'type': 'tool_finished', 'tool': tool_label})}\n\n"
+        yield f"data: {json.dumps({'type': 'text', 'content': answer})}\n\n"
 
-            elif kind == "tool_call":
-                tool_name = payload.get("name") or "call_agent"
-                try:
-                    args = json.loads(payload.get("args") or "{}")
-                except json.JSONDecodeError:
-                    args = {}
-                query = args.get("query") or message
-
-                yield f"data: {json.dumps({'type': 'tool_started', 'tool': tool_name, 'query': query})}\n\n"
-                try:
-                    agent_answer = await call_agent(
-                        query,
-                        user_name=user["name"],
-                        user_id=user["id"],
-                        user_role=user.get("role", ""),
-                    )
-                except Exception as exc:
-                    agent_answer = f"(Error querying agent: {exc})"
-                yield f"data: {json.dumps({'type': 'tool_finished', 'tool': tool_name})}\n\n"
-
-                full_response += agent_answer
-                yield f"data: {json.dumps({'type': 'text', 'content': agent_answer})}\n\n"
-
-            elif kind == "error":
-                yield f"data: {json.dumps({'type': 'error', 'message': payload})}\n\n"
-
-        if full_response.strip():
-            add_message(conversation_id, "assistant", full_response.strip())
+        if answer.strip():
+            add_message(conversation_id, "assistant", answer.strip())
             touch_conversation(conversation_id)
         conv = get_conversation(conversation_id)
 
@@ -463,9 +294,9 @@ async def root():
 async def health():
     return {
         "status": "ok",
-        "llm_model": LLM_MODEL,
         "realtime": True,
         "agent_enabled": config.agent_enabled(),
+        "agent_label": config.agent_label(),
     }
 
 
@@ -525,7 +356,7 @@ async def api_vision_snapshot(request: Request):
         prefix = (
             f"[System context (do NOT read aloud): the people visible in this image are: "
             f"{names_str}. Address them by name when you speak, but do not describe "
-            f"the image unless explicitly asked.]"
+            f"the image unless explicitly asked. Respond in {config.language_name()}.]"
         )
         augmented_prompt = f"{prefix} {augmented_prompt}" if augmented_prompt else prefix
 
