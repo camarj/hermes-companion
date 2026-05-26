@@ -26,6 +26,30 @@ if [ -z "$PYTHON" ]; then
     exit 1
 fi
 
+# ── Auto-build the React frontend if missing ────────────────────────────────
+# The new React app lives at frontend/static/next/. If you've already run
+# `pnpm run build` (or this script ran it for you previously), the artifacts
+# are there and we skip. Otherwise we build now so the assistant works after
+# a fresh clone. The legacy frontend at frontend/static/index.html is always
+# present (it's tracked in git).
+FRONTEND_DIR="$SCRIPT_DIR/frontend"
+NEXT_BUILD="$FRONTEND_DIR/static/next/index.html"
+if [ ! -f "$NEXT_BUILD" ] && [ -f "$FRONTEND_DIR/package.json" ]; then
+    if command -v pnpm >/dev/null 2>&1; then
+        PKG_INSTALL="pnpm install"
+        PKG_BUILD="pnpm run build"
+    elif command -v npm >/dev/null 2>&1; then
+        PKG_INSTALL="npm ci"
+        PKG_BUILD="npm run build"
+    else
+        echo "ERROR: frontend build artifacts missing and neither pnpm nor npm is installed." >&2
+        echo "       Install Node + a package manager, or run \`pnpm install && pnpm run build\` in $FRONTEND_DIR." >&2
+        exit 1
+    fi
+    echo "[start.sh] frontend/static/next/ missing — building React app..."
+    (cd "$FRONTEND_DIR" && $PKG_INSTALL && $PKG_BUILD)
+fi
+
 # Stream prints to the log without buffering (helps when debugging long tool calls).
 export PYTHONUNBUFFERED=1
 

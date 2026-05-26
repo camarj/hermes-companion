@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens ported 1:1 from frontend/static/index.html so the React app
+ * shares the same visual language as the legacy single-file frontend.
+ *
+ * Tailwind v4 conventions:
+ *   `@theme` declarations become Tailwind utilities (e.g. `--color-accent`
+ *   → `bg-accent`, `--font-sans` → `font-sans`).
+ *   `--spacing` is the base unit; v4 calculates `--spacing-n` as `n * base`,
+ *   so our scale (1, 2, 3, 4, 6, 8, 12, 16) lines up automatically.
+ */
+
+@theme {
+  --color-accent: #2d9aa5;
+  --color-accent-hover: #3fb0bc;
+  --color-accent-wash: rgba(45, 154, 165, 0.08);
+  --color-danger: #c53030;
+
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-fg-inverse: var(--fg-inverse);
+  --color-rule: var(--rule);
+  --color-rule-soft: var(--rule-soft);
+  --color-rule-strong: var(--rule-strong);
+
+  --font-serif: "Fraunces", "Source Serif 4", Georgia, serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --text-h3: 1.5rem;
+  --text-h4: 1.125rem;
+  --text-body: 1.0625rem;
+  --text-body-sm: 0.9375rem;
+  --text-meta: 0.8125rem;
+  --text-micro: 0.6875rem;
+
+  --spacing: 4px;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+}
+
+:root {
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 180ms;
+  --dur-base: 320ms;
+  --dur-slow: 600ms;
+  --sidebar-w: 280px;
+}
+
+.dark {
+  --bg: #070605;
+  --bg-elevated: #141210;
+  --bg-subtle: #1c1a17;
+  --fg: #ede8de;
+  --fg-muted: #b8b0a1;
+  --fg-subtle: #7a7366;
+  --fg-inverse: #141210;
+  --rule: rgba(237, 232, 222, 0.12);
+  --rule-soft: rgba(237, 232, 222, 0.06);
+  --rule-strong: rgba(237, 232, 222, 0.22);
+  color-scheme: dark;
+}
+
+.light,
+.system {
+  --bg: #f5f1eb;
+  --bg-elevated: #faf7f2;
+  --bg-subtle: #ede8de;
+  --fg: #141210;
+  --fg-muted: #4a453d;
+  --fg-subtle: #7a7366;
+  --fg-inverse: #faf7f2;
+  --rule: rgba(20, 18, 16, 0.14);
+  --rule-soft: rgba(20, 18, 16, 0.08);
+  --rule-strong: rgba(20, 18, 16, 0.3);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  .system {
+    --bg: #070605;
+    --bg-elevated: #141210;
+    --bg-subtle: #1c1a17;
+    --fg: #ede8de;
+    --fg-muted: #b8b0a1;
+    --fg-subtle: #7a7366;
+    --fg-inverse: #141210;
+    --rule: rgba(237, 232, 222, 0.12);
+    --rule-soft: rgba(237, 232, 222, 0.06);
+    --rule-strong: rgba(237, 232, 222, 0.22);
+    color-scheme: dark;
+  }
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.55;
+  height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  transition:
+    background var(--dur-slow) var(--ease-smooth),
+    color var(--dur-slow) var(--ease-smooth);
+}
