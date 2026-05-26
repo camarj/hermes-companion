@@ -199,6 +199,16 @@ the Settings → "Known people" panel becomes functional.
   you expose it to the open internet, put a reverse proxy with real auth in
   front.
 
+## Claude Code
+
+This repo ships with [Claude Code](https://claude.com/claude-code) configuration
+out of the box: a project [`CLAUDE.md`](./CLAUDE.md) with conventions and
+gotchas, plus a [`.claude/`](./.claude) folder with skills (`/setup`, `/dev`,
+`/add-agent-backend`, `/architecture`), a `realtime-reviewer` subagent for
+voice/audio reviews, and a permission allowlist so common project commands
+don't trigger approval prompts. If you don't use Claude Code, you can safely
+ignore those files.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).

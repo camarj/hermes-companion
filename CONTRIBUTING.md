@@ -17,6 +17,30 @@ cp .env.example .env                    # add your OPENAI_API_KEY
 
 Open `http://localhost:8000` (HTTPS-only mic access? See README → "HTTPS").
 
+## Using Claude Code
+
+This repo ships with [Claude Code](https://claude.com/claude-code) configuration
+in [`CLAUDE.md`](./CLAUDE.md) and the [`.claude/`](./.claude) folder. If you
+have Claude Code installed, the workflows below work out of the box:
+
+- **`/setup`** — bootstraps a fresh clone (venv, deps, config files, smoke test).
+- **`/dev`** — common day-to-day dev tasks (start the server in the background,
+  tail logs, hit endpoints).
+- **`/add-agent-backend`** — interactive walkthrough for plugging your own CLI
+  or service into `call_agent` instead of Hermes.
+- **`/architecture`** *(auto-loaded when relevant)* — deep architectural
+  knowledge about the Realtime event flow, the agent subprocess contract, the
+  half-duplex echo suppression algorithm, and vision frame injection. Claude
+  pulls it in when you're modifying voice/audio code.
+
+There's also a `realtime-reviewer` subagent that reviews voice-related diffs for
+known correctness pitfalls — invoke it after modifying `backend/realtime.py`:
+*"Use the realtime-reviewer subagent to review the diff."*
+
+Permissions are pre-allowlisted for safe project commands (the start script,
+the project's venv, localhost curls, read-only git/gh) so you won't get spammed
+with approval prompts.
+
 ## What to send
 
 - **Bug reports** — open an issue with steps to reproduce and the relevant log

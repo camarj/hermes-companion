@@ -17,6 +17,10 @@ config.yaml
 .env.*
 !.env.example
 
+# Claude Code personal overrides (the shared .claude/ folder IS committed)
+.claude/settings.local.json
+CLAUDE.local.md
+
 # Databases (user data, not code)
 *.db
 *.db-shm
