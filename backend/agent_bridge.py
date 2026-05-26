@@ -121,6 +121,89 @@ async def call_agent(
     return cleaned or "The agent returned no answer."
 
 
+async def call_agent_stream(
+    query: str,
+    user_name: str = "",
+    user_id: str = "",
+    user_role: str = "",
+    *,
+    log_prefix: str = "[agent/stream]",
+):
+    """Run the agent and yield (kind, text) tuples.
+
+    `kind` is `"reasoning"` for non-final paragraphs (intermediate chain-of-
+    thought) and `"text"` for the final paragraph (the answer). Splitting
+    happens on blank lines in the agent's stdout — by convention, the last
+    paragraph is the answer.
+
+    The current implementation buffers the entire subprocess output before
+    yielding, because `hermes -z` emits one blob; future variants (e.g.
+    `hermes chat -q`) can be wired to stream paragraph-by-paragraph as the
+    output lands.
+    """
+    if not agent_enabled():
+        yield ("text", "No external agent is configured. Set `agent.command` in config.yaml.")
+        return
+
+    argv = _resolve_command(query, user_id)
+    print(f"{log_prefix} invoking {argv[0]} (requester={user_id}): {query[:80]}")
+    env = _build_env(user_id, user_name, user_role)
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+    except FileNotFoundError:
+        print(f"{log_prefix} binary not found: {argv[0]}")
+        yield ("text", f"Couldn't reach the external agent ({argv[0]} not found).")
+        return
+    except Exception as e:
+        print(f"{log_prefix} spawn error: {e}")
+        yield ("text", "Couldn't start the external agent.")
+        return
+
+    timeout = agent_timeout()
+    try:
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+            await proc.wait()
+        except Exception:
+            pass
+        print(f"{log_prefix} timeout after {timeout}s")
+        yield ("text", "The agent took too long to respond.")
+        return
+
+    stdout_text = stdout_b.decode("utf-8", errors="replace").strip()
+    stderr_text = stderr_b.decode("utf-8", errors="replace").strip()
+
+    if not stdout_text:
+        print(f"{log_prefix} empty stdout (exit={proc.returncode}). stderr={stderr_text[:200]}")
+        yield ("text", "The agent returned no answer.")
+        return
+
+    if proc.returncode != 0:
+        print(
+            f"{log_prefix} exited with code {proc.returncode} but stdout is valid; "
+            f"using it. stderr={stderr_text[:200]}"
+        )
+
+    cleaned = _clean_for_chat(stdout_text)
+    paragraphs = [p.strip() for p in cleaned.split("\n\n") if p.strip()]
+    if not paragraphs:
+        yield ("text", cleaned)
+        return
+
+    print(f"{log_prefix} answer in {len(paragraphs)} paragraph(s); last → text, rest → reasoning")
+    for p in paragraphs[:-1]:
+        yield ("reasoning", p)
+    yield ("text", paragraphs[-1])
+
+
 async def call_agent_for_voice(
     query: str,
     user_name: str = "",
