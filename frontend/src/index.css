@@ -1,32 +1,38 @@
 @import "tailwindcss";
 
 /*
- * Design tokens ported 1:1 from frontend/static/index.html so the React app
- * shares the same visual language as the legacy single-file frontend.
+ * Design tokens.
  *
- * Tailwind v4 conventions:
- *   `@theme` declarations become Tailwind utilities (e.g. `--color-accent`
- *   → `bg-accent`, `--font-sans` → `font-sans`).
- *   `--spacing` is the base unit; v4 calculates `--spacing-n` as `n * base`,
- *   so our scale (1, 2, 3, 4, 6, 8, 12, 16) lines up automatically.
+ * Two layers:
+ * 1) Raw theme vars (`--bg`, `--fg`, `--rule`) that swap based on a class on
+ *    <html> (.dark / .light / .system).
+ * 2) `@theme` exposes shadcn-standard semantic names (`--color-background`,
+ *    `--color-primary`, etc.) as aliases of the raw vars, so shadcn components
+ *    work out of the box and our brand accent maps to "primary".
  */
 
 @theme {
-  --color-accent: #2d9aa5;
-  --color-accent-hover: #3fb0bc;
-  --color-accent-wash: rgba(45, 154, 165, 0.08);
-  --color-danger: #c53030;
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--bg-elevated);
+  --color-card-foreground: var(--fg);
+  --color-popover: var(--bg-elevated);
+  --color-popover-foreground: var(--fg);
 
-  --color-bg: var(--bg);
-  --color-bg-elevated: var(--bg-elevated);
-  --color-bg-subtle: var(--bg-subtle);
-  --color-fg: var(--fg);
-  --color-fg-muted: var(--fg-muted);
-  --color-fg-subtle: var(--fg-subtle);
-  --color-fg-inverse: var(--fg-inverse);
-  --color-rule: var(--rule);
-  --color-rule-soft: var(--rule-soft);
-  --color-rule-strong: var(--rule-strong);
+  --color-primary: var(--accent);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--bg-subtle);
+  --color-secondary-foreground: var(--fg);
+  --color-muted: var(--bg-subtle);
+  --color-muted-foreground: var(--fg-muted);
+  --color-accent: var(--bg-subtle);
+  --color-accent-foreground: var(--fg);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: #ffffff;
+
+  --color-border: var(--rule);
+  --color-input: var(--rule);
+  --color-ring: var(--accent);
 
   --font-serif: "Fraunces", "Source Serif 4", Georgia, serif;
   --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
@@ -41,6 +47,7 @@
 
   --spacing: 4px;
 
+  --radius: 0.625rem;
   --radius-xs: 2px;
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -55,6 +62,10 @@
   --dur-base: 320ms;
   --dur-slow: 600ms;
   --sidebar-w: 280px;
+  --danger: #c53030;
+  --accent: #2d9aa5;
+  --accent-hover: #3fb0bc;
+  --accent-wash: rgba(45, 154, 165, 0.08);
 }
 
 .dark {
