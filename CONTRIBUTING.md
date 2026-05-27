@@ -30,7 +30,7 @@ have Claude Code installed, the workflows below work out of the box:
   or service into `call_agent` instead of Hermes.
 - **`/architecture`** *(auto-loaded when relevant)* — deep architectural
   knowledge about the Realtime event flow, the agent subprocess contract, the
-  half-duplex echo suppression algorithm, and vision frame injection. Claude
+  and vision frame injection. Claude
   pulls it in when you're modifying voice/audio code.
 
 There's also a `realtime-reviewer` subagent that reviews voice-related diffs for

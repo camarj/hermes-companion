@@ -35,14 +35,11 @@ export type AppConfig = {
 
 export type ThemeMode = "dark" | "light" | "system"
 
-export type PlaybackMode = "private" | "local"
-
 export type VoiceMode = "chat" | "voice" | "vision"
 
 export type Settings = {
   theme: ThemeMode
   language: string
-  playback: PlaybackMode
 }
 
 export type KnownPerson = {

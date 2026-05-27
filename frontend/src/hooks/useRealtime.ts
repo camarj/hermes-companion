@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { UIMessage } from "ai"
 import { api } from "@/lib/api"
-import type { PlaybackMode, User, VoiceMode } from "@/lib/types"
+import type { User, VoiceMode } from "@/lib/types"
 import { useAudioPlayback } from "./useAudioPlayback"
 import { useCamera } from "./useCamera"
 import { useEchoSuppression } from "./useEchoSuppression"
@@ -14,15 +14,13 @@ type ToolThinking = {
 
 type Options = {
   user: User
-  playback: PlaybackMode
   onError?: (msg: string) => void
   onConversationCreated?: (id: string) => void
   onNewFacesGreeting?: () => void
 }
 
-// Server emits errors we treat as benign — these are handled internally by
-// OpenAI and shouldn't bubble up as toasts. Notably the LOCAL-mode echo can
-// momentarily trigger conversation_already_has_active_response.
+// Server emits errors we treat as benign — handled internally by OpenAI and
+// not worth surfacing as toasts.
 const BENIGN_ERROR_CODES = new Set([
   "conversation_already_has_active_response",
   "input_audio_buffer_commit_empty",
@@ -35,7 +33,6 @@ function makeId(prefix: string): string {
 
 export function useRealtime({
   user,
-  playback,
   onError,
   onConversationCreated,
   onNewFacesGreeting,
@@ -51,7 +48,6 @@ export function useRealtime({
   const wsRef = useRef<WebSocket | null>(null)
   const modeRef = useRef<VoiceMode>("chat")
   const sessionReadyRef = useRef(false)
-  const playbackRef = useRef<PlaybackMode>(playback)
   const connectedRef = useRef(false)
 
   // Pending message handles for the current turn.
@@ -89,20 +85,6 @@ export function useRealtime({
   }, [echo.isMuted])
 
   const playback_ = useAudioPlayback()
-  useEffect(() => {
-    playbackRef.current = playback
-    // In LOCAL mode the server speaks; the browser stays silent.
-    playback_.setMuted(playback === "local")
-    // If we're live, push the new mode to the proxy so it can re-tune VAD.
-    const ws = wsRef.current
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(JSON.stringify({ type: "companion.playback_mode", mode: playback }))
-      } catch {
-        // socket closing; the next reconnect will sync.
-      }
-    }
-  }, [playback, playback_])
 
   const camera = useCamera()
 
@@ -430,24 +412,18 @@ export function useRealtime({
           if (msg.type === "session.updated" && !connectedRef.current) {
             setConnected(true)
             setConnecting(false)
-            // Sync playback + (if applicable) vision mode to backend.
-            try {
-              ws.send(
-                JSON.stringify({
-                  type: "companion.playback_mode",
-                  mode: playbackRef.current,
-                }),
-              )
-              if (modeRef.current === "vision") {
+            // If we connected directly into vision mode, sync that to the proxy.
+            if (modeRef.current === "vision") {
+              try {
                 ws.send(
                   JSON.stringify({
                     type: "companion.vision_mode",
                     enabled: true,
                   }),
                 )
+              } catch {
+                // socket closing
               }
-            } catch {
-              // socket closing
             }
             settle(true)
           }

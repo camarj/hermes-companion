@@ -13,7 +13,6 @@ import { useRealtime } from "@/hooks/useRealtime"
 import { t } from "@/lib/i18n"
 import type {
   AppConfig,
-  PlaybackMode,
   Settings,
   ThemeMode,
   User,
@@ -26,7 +25,6 @@ type AppShellProps = {
   settings: Settings
   onThemeChange: (theme: ThemeMode) => void
   onLanguageChange: (language: string) => void
-  onPlaybackChange: (playback: PlaybackMode) => void
   onLogout: () => void
 }
 
@@ -36,7 +34,6 @@ export function AppShell({
   settings,
   onThemeChange,
   onLanguageChange,
-  onPlaybackChange,
   onLogout,
 }: AppShellProps) {
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -64,7 +61,6 @@ export function AppShell({
 
   const realtime = useRealtime({
     user,
-    playback: settings.playback,
     onError: (msg) => toast.error(msg),
     onConversationCreated: (id) => {
       setActiveId(id)
@@ -135,13 +131,11 @@ export function AppShell({
         <ModeBar
           lang={lang}
           theme={settings.theme}
-          playback={settings.playback}
           mode={realtime.mode}
           autoMuted={realtime.autoMuted}
           userMuted={realtime.userMuted}
           modeDisabled={realtime.connecting}
           onThemeChange={onThemeChange}
-          onPlaybackChange={onPlaybackChange}
           onModeChange={(m) => void realtime.setMode(m)}
           onToggleMute={realtime.toggleMute}
         />

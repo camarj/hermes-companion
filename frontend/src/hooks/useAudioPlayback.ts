@@ -6,7 +6,6 @@ export function useAudioPlayback() {
   const ctxRef = useRef<AudioContext | null>(null)
   const queueRef = useRef<Float32Array[]>([])
   const playingRef = useRef(false)
-  const mutedRef = useRef(false)
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null)
 
   const ensureCtx = useCallback((): AudioContext => {
@@ -52,7 +51,6 @@ export function useAudioPlayback() {
   const enqueue = useCallback(
     (b64Pcm16: string) => {
       if (!b64Pcm16) return
-      if (mutedRef.current) return
       try {
         const binary = atob(b64Pcm16)
         const bytes = new Uint8Array(binary.length)
@@ -89,7 +87,6 @@ export function useAudioPlayback() {
     playingRef.current = false
   }, [])
 
-  // Drop buffered chunks, stop the in-flight source, and tear down the context.
   const stop = useCallback(() => {
     queueRef.current = []
     silenceCurrent()
@@ -103,25 +100,7 @@ export function useAudioPlayback() {
     }
   }, [silenceCurrent])
 
-  // LOCAL playback: backend pipes audio to server speakers, browser stays silent
-  // to avoid a duplicated, out-of-sync echo. Setting muted=true drops the
-  // queue *and* silences any in-flight BufferSource so the user doesn't hear
-  // the current chunk play out on top of the server speaker output.
-  const setMuted = useCallback(
-    (muted: boolean) => {
-      mutedRef.current = muted
-      if (muted) {
-        queueRef.current = []
-        silenceCurrent()
-      }
-    },
-    [silenceCurrent],
-  )
-
   useEffect(() => () => stop(), [stop])
 
-  return useMemo(
-    () => ({ enqueue, stop, setMuted }),
-    [enqueue, stop, setMuted],
-  )
+  return useMemo(() => ({ enqueue, stop }), [enqueue, stop])
 }

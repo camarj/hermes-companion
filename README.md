@@ -17,9 +17,6 @@ any subprocess works).
 - **Pluggable agent backend** — one tool, `call_agent`, runs any subprocess
   you configure. Default points at [Hermes](https://github.com/) but works
   with any CLI that takes a query and prints an answer.
-- **Two playback modes** — `BROWSER` (private, in your headphones) or
-  `SPEAKERS` (out of the host's speakers, with built-in half-duplex echo
-  suppression for in-room meetings).
 - **Vision mode (optional)** — webcam frames injected into the Realtime
   session; optional local face recognition so the assistant greets people by
   name. 100% local — frames go to OpenAI only when you're in vision mode, no
@@ -134,7 +131,7 @@ thing yourself.
 | File | What it does |
 |---|---|
 | `backend/main.py` | FastAPI app: auth cookie, CRUD, text chat (direct agent passthrough via SSE) |
-| `backend/realtime.py` | WebSocket proxy to OpenAI Realtime — VAD config, server speakers, vision frame injection, half-duplex echo suppression |
+| `backend/realtime.py` | WebSocket proxy to OpenAI Realtime — VAD config, vision frame injection |
 | `backend/agent_bridge.py` | Runs your configured `agent.command` as a subprocess |
 | `backend/config.py` | Loads `config.yaml`, builds the system prompt |
 | `backend/database.py` | SQLite (`companion.db`) — users seeded from config |
@@ -154,12 +151,6 @@ frame is injected into the session as silent context. If `face_recognition`
 is installed and you've enrolled known people via Settings → "Known people",
 the assistant gets a system-context hint with the recognized names and
 greets them.
-
-**Playback: BROWSER vs SPEAKERS** — BROWSER plays the assistant in your
-headphones (default, private). SPEAKERS routes audio out the host's speakers
-via `aplay` (useful for in-room meetings); the backend automatically applies
-half-duplex echo suppression so the mic doesn't pick up the assistant's
-own voice.
 
 ## HTTPS
 

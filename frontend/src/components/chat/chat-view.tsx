@@ -146,7 +146,7 @@ export function ChatView({
   // Live (voice/vision) — show only transcripts + status hint at bottom.
   if (isLive) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         {visibleMessages.length === 0 && !liveThinking ? (
           <StartView
             config={config}
@@ -184,7 +184,7 @@ export function ChatView({
 
   // Chat with messages — message list + bottom input
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex flex-1 flex-col overflow-hidden">
         <MessageList
           messages={visibleMessages}

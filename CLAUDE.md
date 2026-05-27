@@ -33,7 +33,7 @@ There are no tests. Backend changes get smoke-tested via the REST endpoints. Voi
 
 ## Deeper architecture
 
-For details on the Realtime event flow, the `call_agent` subprocess contract, the half-duplex echo-suppression algorithm in LOCAL playback mode, and the vision frame injection bridge — load `.claude/skills/architecture/SKILL.md` on demand. Don't pull it into context unless you're modifying voice/realtime code.
+For details on the Realtime event flow, the `call_agent` subprocess contract, and the vision frame injection bridge — load `.claude/skills/architecture/SKILL.md` on demand. Don't pull it into context unless you're modifying voice/realtime code.
 
 ## Repo etiquette
 
