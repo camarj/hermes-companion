@@ -7,6 +7,7 @@ the external agent (see `agent_bridge.py`).
 """
 
 import json
+import os
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -29,6 +30,7 @@ from database import (
     count_conversations_for_agent,
 )
 from agent_bridge import call_agent, call_agent_stream
+from host_mode import router as host_router
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -54,6 +56,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(host_router)
+
+
+def _is_host_mode() -> bool:
+    """True when this process should serve ONLY /api/host/* and /api/health."""
+    return os.environ.get("HERMES_COMPANION_MODE", "").lower() == "host"
+
+
+_HOST_MODE_ALLOWLIST = ("/api/host", "/api/health")
+
+
+@app.middleware("http")
+async def host_mode_filter(request: Request, call_next):
+    """In host mode (HERMES_COMPANION_MODE=host) 404 every client-facing
+    HTTP route. WebSocket routes are handled individually inside their
+    handlers since middleware doesn't intercept WS upgrades."""
+    if _is_host_mode():
+        path = request.url.path
+        if not any(path.startswith(p) for p in _HOST_MODE_ALLOWLIST):
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "endpoint disabled in host mode"},
+            )
+    return await call_next(request)
 
 frontend_path = Path(__file__).parent.parent / "frontend" / "static"
 react_build_path = frontend_path / "next"

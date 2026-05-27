@@ -142,6 +142,27 @@ def agents() -> list[dict[str, Any]]:
     return []
 
 
+def host_tokens() -> list[dict[str, Any]]:
+    """Bearer tokens that authenticate remote clients hitting `/api/host/acp`.
+
+    Each entry: `{token: str, label: str}`. Entries without a usable token
+    are silently dropped — never propagated to the DB.
+    """
+    raw = CONFIG.get("host_tokens") or []
+    out: list[dict[str, Any]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        token = str(entry.get("token") or "").strip()
+        if not token:
+            continue
+        out.append({
+            "token": token,
+            "label": str(entry.get("label") or token).strip(),
+        })
+    return out
+
+
 def _normalise_agent_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """Fill in defaults for optional fields."""
     return {
