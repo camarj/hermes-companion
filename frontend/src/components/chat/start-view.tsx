@@ -1,11 +1,11 @@
 import { ChatInput } from "./chat-input"
 import { t, type Lang } from "@/lib/i18n"
-import type { AppConfig } from "@/lib/types"
+import type { AppConfig, ChatAttachment } from "@/lib/types"
 
 type Props = {
   config: AppConfig | null
   lang: Lang
-  onSend: (text: string) => void
+  onSend: (text: string, attachments: ChatAttachment[]) => void
   inputDisabled?: boolean
   hintOverride?: string
 }
@@ -47,6 +47,7 @@ export function StartView({
           disabled={inputDisabled}
           placeholder={i.inputPlaceholder}
           autoFocus
+          lang={lang}
         />
       </div>
     </div>

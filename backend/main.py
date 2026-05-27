@@ -262,6 +262,57 @@ def _extract_latest_user_text(messages: list[dict]) -> str:
     return ""
 
 
+# Per-file and per-turn caps mirror the frontend (chat-input.tsx). Defense in
+# depth — the browser is the source of truth for UX but we re-check here so a
+# crafted request can't blow past the agent's context.
+_ATT_MAX_FILE_BYTES = 500 * 1024
+_ATT_MAX_TOTAL_BYTES = 1_000_000
+_ATT_MAX_FILES = 5
+
+
+def _sanitize_attachments(raw: object) -> list[dict]:
+    """Validate the `attachments` field from the chat request body.
+
+    Returns a list of `{name, content}` dicts; silently drops malformed
+    entries and enforces the size/count caps."""
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    total = 0
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip() or "attachment"
+        content = item.get("content")
+        if not isinstance(content, str):
+            continue
+        encoded_len = len(content.encode("utf-8", errors="replace"))
+        if encoded_len > _ATT_MAX_FILE_BYTES:
+            continue
+        if total + encoded_len > _ATT_MAX_TOTAL_BYTES:
+            break
+        out.append({"name": name, "content": content})
+        total += encoded_len
+        if len(out) >= _ATT_MAX_FILES:
+            break
+    return out
+
+
+def _compose_query_with_attachments(message: str, attachments: list[dict]) -> str:
+    """Prepend attachment content to the user's message so the agent sees one
+    flat string. Format is intentionally explicit so the agent can tell where
+    each file starts/ends without parsing markdown."""
+    if not attachments:
+        return message
+    parts: list[str] = []
+    for att in attachments:
+        parts.append(f"[Adjunto: {att['name']}]")
+        parts.append(att["content"].rstrip())
+        parts.append("---")
+    parts.append(message)
+    return "\n".join(p for p in parts if p)
+
+
 @app.post("/api/chat/stream")
 async def api_chat_stream(request: Request):
     """Vercel AI SDK 6 UI Message Stream Protocol.
@@ -287,7 +338,8 @@ async def api_chat_stream(request: Request):
         raise HTTPException(status_code=400, detail="Body must be JSON")
 
     message = _extract_latest_user_text(body.get("messages") or [])
-    if not message:
+    attachments = _sanitize_attachments(body.get("attachments"))
+    if not message and not attachments:
         raise HTTPException(status_code=400, detail="No user message in body")
 
     conversation_id = body.get("conversation_id") or None
@@ -297,7 +349,8 @@ async def api_chat_stream(request: Request):
         conv = create_conversation(user["id"])
         conversation_id = conv["id"]
 
-    add_message(conversation_id, "user", message)
+    agent_query = _compose_query_with_attachments(message, attachments)
+    add_message(conversation_id, "user", message or " ".join(f"[{a['name']}]" for a in attachments))
     tool_call_id = f"call_{uuid.uuid4().hex[:12]}"
     message_id = f"msg_{uuid.uuid4().hex[:12]}"
     text_id = f"t_{uuid.uuid4().hex[:8]}"
@@ -325,7 +378,7 @@ async def api_chat_stream(request: Request):
 
         try:
             async for kind, content in call_agent_stream(
-                message,
+                agent_query,
                 user_name=user["name"],
                 user_id=user["id"],
                 user_role=user.get("role", ""),

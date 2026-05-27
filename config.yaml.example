@@ -61,7 +61,8 @@ agent:
   # The literal string "{query}" is replaced with the user's question.
   command:
     - hermes
-    - -z
+    - chat
+    - -q
     - "{query}"
     - --yolo
 
