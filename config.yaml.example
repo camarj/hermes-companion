@@ -82,3 +82,23 @@ agent:
 # ─────────────────────────────────────────────────────────────────────────────
 # system_prompt: |
 #   You are ...
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Host mode — bearer tokens that authenticate remote `RemoteAcpBackend`
+# clients hitting `/api/host/acp` (WebSocket bridge), the read-only inspection
+# endpoints (`/api/host/skills|mcp|tools|config`), `/api/host/upload`, and
+# `/api/host/config/system-prompt`.
+#
+# Enabling at least one token does NOT by itself enter host mode — that is
+# controlled by the `HERMES_COMPANION_MODE=host` env var (see README → host
+# mode). With host mode off these tokens are simply unused.
+#
+# Each token should be a long, unguessable string (32+ random chars). Store
+# them on the client side (the `RemoteAcpBackend` config) so the client can
+# send `Authorization: Bearer <token>` to the host.
+# ─────────────────────────────────────────────────────────────────────────────
+# host_tokens:
+#   - token: "replace-with-a-long-random-string"
+#     label: "vps-prod"
+#   - token: "another-long-random-string"
+#     label: "laptop-dev"
