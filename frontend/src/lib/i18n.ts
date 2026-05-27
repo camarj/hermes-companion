@@ -57,6 +57,19 @@ type Dict = {
   agent: string
   create: string
   unassignedAgent: string
+  agentSettings: string
+  agentSettingsAria: string
+  systemPrompt: string
+  systemPromptHint: string
+  save: string
+  saving: string
+  saved: string
+  saveFailed: string
+  loadFailed: string
+  skillsSection: string
+  mcpSection: string
+  toolsSection: string
+  configSection: string
 }
 
 const ES: Dict = {
@@ -115,6 +128,20 @@ const ES: Dict = {
   agent: "Agente",
   create: "Crear",
   unassignedAgent: "Sin agente",
+  agentSettings: "Configuración del agente",
+  agentSettingsAria: "Configuración del agente",
+  systemPrompt: "System prompt",
+  systemPromptHint:
+    "Texto inyectado al iniciar cada sesión. Se aplica desde el próximo turno.",
+  save: "Guardar",
+  saving: "Guardando…",
+  saved: "Guardado",
+  saveFailed: "No se pudo guardar.",
+  loadFailed: "No se pudo cargar la información del agente.",
+  skillsSection: "Skills",
+  mcpSection: "MCP",
+  toolsSection: "Tools",
+  configSection: "Config",
 }
 
 const EN: Dict = {
@@ -173,6 +200,20 @@ const EN: Dict = {
   agent: "Agent",
   create: "Create",
   unassignedAgent: "Unassigned",
+  agentSettings: "Agent settings",
+  agentSettingsAria: "Agent settings",
+  systemPrompt: "System prompt",
+  systemPromptHint:
+    "Text injected at session start. Takes effect on the next turn.",
+  save: "Save",
+  saving: "Saving…",
+  saved: "Saved",
+  saveFailed: "Save failed.",
+  loadFailed: "Could not load agent details.",
+  skillsSection: "Skills",
+  mcpSection: "MCP",
+  toolsSection: "Tools",
+  configSection: "Config",
 }
 
 const PT: Dict = {

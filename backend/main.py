@@ -288,6 +288,72 @@ async def api_update_agent(agent_id: str, request: Request):
     return updated
 
 
+@app.get("/api/agents/{agent_id}/skills")
+async def api_agent_skills(agent_id: str, request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    agent = get_agent_instance(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"agent_id {agent_id!r} not found")
+    from agent_inspection import inspect_agent
+    return await inspect_agent(agent, "skills")
+
+
+@app.get("/api/agents/{agent_id}/mcp")
+async def api_agent_mcp(agent_id: str, request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    agent = get_agent_instance(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"agent_id {agent_id!r} not found")
+    from agent_inspection import inspect_agent
+    return await inspect_agent(agent, "mcp")
+
+
+@app.get("/api/agents/{agent_id}/tools")
+async def api_agent_tools(agent_id: str, request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    agent = get_agent_instance(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"agent_id {agent_id!r} not found")
+    from agent_inspection import inspect_agent
+    return await inspect_agent(agent, "tools")
+
+
+@app.get("/api/agents/{agent_id}/config")
+async def api_agent_config(agent_id: str, request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    agent = get_agent_instance(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"agent_id {agent_id!r} not found")
+    from agent_inspection import inspect_agent
+    return await inspect_agent(agent, "config")
+
+
+@app.put("/api/agents/{agent_id}/system-prompt")
+async def api_agent_system_prompt(agent_id: str, request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    body = await request.json()
+    if not isinstance(body, dict) or "system_prompt" not in body:
+        raise HTTPException(status_code=422, detail="`system_prompt` is required")
+    prompt = body.get("system_prompt")
+    if prompt is not None and not isinstance(prompt, str):
+        raise HTTPException(status_code=422, detail="`system_prompt` must be a string")
+    from agent_inspection import set_system_prompt
+    updated = set_system_prompt(agent_id, prompt)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"agent_id {agent_id!r} not found")
+    return updated
+
+
 @app.delete("/api/agents/{agent_id}", status_code=204)
 async def api_delete_agent(agent_id: str, request: Request):
     user = get_current_user(request)

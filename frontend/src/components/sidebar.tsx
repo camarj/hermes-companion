@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { LogOut, Menu, Plus, Trash2 } from "lucide-react"
+import { LogOut, Menu, Plus, Settings as SettingsIcon, Trash2 } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +26,7 @@ type SidebarProps = {
   onDelete: (id: string) => Promise<unknown> | unknown
   onLogout: () => void
   onToggle?: () => void
+  onOpenAgentSettings?: (agentId: string) => void
 }
 
 type AgentGroup = {
@@ -106,6 +107,7 @@ export function Sidebar({
   onDelete,
   onLogout,
   onToggle,
+  onOpenAgentSettings,
 }: SidebarProps) {
   const i = t(lang)
   const [pendingDelete, setPendingDelete] = useState<Conversation | null>(null)
@@ -127,7 +129,17 @@ export function Sidebar({
             className="inline-block h-2 w-2 rounded-full"
             style={{ backgroundColor: group.badgeColor }}
           />
-          <span className="truncate">{group.label}</span>
+          <span className="flex-1 truncate">{group.label}</span>
+          {group.agentId && onOpenAgentSettings && (
+            <button
+              type="button"
+              onClick={() => onOpenAgentSettings(group.agentId!)}
+              aria-label={i.agentSettingsAria}
+              className="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <SettingsIcon className="h-3 w-3" />
+            </button>
+          )}
         </div>
         <ul className="flex flex-col gap-px">
           {group.conversations.map((c) => {

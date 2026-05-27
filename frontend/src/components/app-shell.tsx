@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react"
 import { Settings as SettingsIcon } from "lucide-react"
 import { toast } from "sonner"
+import { AgentSettings } from "@/components/agent-settings"
 import { Sidebar } from "@/components/sidebar"
 import { NewConversationDialog } from "@/components/new-conversation-dialog"
 import { SettingsPanel } from "@/components/settings-panel"
@@ -42,8 +43,10 @@ export function AppShell({
   const [activeId, setActiveId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [agentSettingsId, setAgentSettingsId] = useState<string | null>(null)
   const { conversations, refresh, remove } = useConversations(true)
-  const { agents } = useAgents()
+  const { agents, refresh: refreshAgents } = useAgents()
+  const agentForSettings = agents.find((a) => a.id === agentSettingsId) ?? null
   const lang = settings.language
   const i = t(lang)
   const online = useHealth()
@@ -127,6 +130,7 @@ export function AppShell({
           if (activeId === id) setActiveId(null)
         }}
         onLogout={onLogout}
+        onOpenAgentSettings={(agentId) => setAgentSettingsId(agentId)}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -205,6 +209,16 @@ export function AppShell({
         lang={lang}
         onSelect={(id) => void startConversationWithAgent(id)}
         onCancel={() => setPickerOpen(false)}
+      />
+
+      <AgentSettings
+        open={agentSettingsId !== null}
+        onOpenChange={(open) => {
+          if (!open) setAgentSettingsId(null)
+        }}
+        agent={agentForSettings}
+        lang={lang}
+        onSaved={() => void refreshAgents()}
       />
     </div>
   )
