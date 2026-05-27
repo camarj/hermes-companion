@@ -11,13 +11,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { t, type Lang } from "@/lib/i18n"
-import type { AppConfig, Conversation, User } from "@/lib/types"
+import type { AgentInstance, AppConfig, Conversation, User } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type SidebarProps = {
   config: AppConfig | null
   user: User
   conversations: Conversation[]
+  agents?: AgentInstance[]
   activeId: string | null
   lang: Lang
   onSelect: (id: string) => void
@@ -27,30 +28,77 @@ type SidebarProps = {
   onToggle?: () => void
 }
 
-type Grouped = {
-  today: Conversation[]
-  yesterday: Conversation[]
-  older: Conversation[]
+type AgentGroup = {
+  agentId: string | null
+  label: string
+  badgeColor: string
+  conversations: Conversation[]
 }
 
-function groupByDate(list: Conversation[]): Grouped {
-  const now = new Date()
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const startOfYesterday = new Date(startOfDay.getTime() - 24 * 60 * 60 * 1000)
-  const grouped: Grouped = { today: [], yesterday: [], older: [] }
-  for (const c of list) {
-    const updated = new Date(c.updated_at)
-    if (updated >= startOfDay) grouped.today.push(c)
-    else if (updated >= startOfYesterday) grouped.yesterday.push(c)
-    else grouped.older.push(c)
+const BADGE_PALETTE = [
+  "#7c3aed",
+  "#0ea5e9",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#ec4899",
+  "#14b8a6",
+  "#6366f1",
+] as const
+
+export function agentBadgeColor(agentId: string | null): string {
+  if (!agentId) return "#94a3b8"
+  let hash = 0
+  for (let i = 0; i < agentId.length; i += 1) {
+    hash = (hash * 31 + agentId.charCodeAt(i)) >>> 0
   }
-  return grouped
+  return BADGE_PALETTE[hash % BADGE_PALETTE.length]
+}
+
+function groupByAgent(
+  list: Conversation[],
+  agents: AgentInstance[],
+  unassignedLabel: string,
+): AgentGroup[] {
+  const labelById = new Map(agents.map((a) => [a.id, a.label]))
+  const groups = new Map<string | null, AgentGroup>()
+  for (const c of list) {
+    const aid = c.agent_id ?? null
+    const key = aid ?? "__unassigned__"
+    let group = groups.get(key)
+    if (!group) {
+      group = {
+        agentId: aid,
+        label: aid ? labelById.get(aid) ?? aid : unassignedLabel,
+        badgeColor: agentBadgeColor(aid),
+        conversations: [],
+      }
+      groups.set(key, group)
+    }
+    group.conversations.push(c)
+  }
+  // Stable order: agents in their registry order first, unassigned last.
+  const ordered: AgentGroup[] = []
+  for (const a of agents) {
+    const g = groups.get(a.id)
+    if (g) ordered.push(g)
+  }
+  const tail = groups.get("__unassigned__")
+  if (tail) ordered.push(tail)
+  // Any agent_id we don't have in the registry (deleted?) — append.
+  for (const [key, g] of groups) {
+    if (key !== "__unassigned__" && !agents.some((a) => a.id === key)) {
+      ordered.push(g)
+    }
+  }
+  return ordered
 }
 
 export function Sidebar({
   config,
   user,
   conversations,
+  agents = [],
   activeId,
   lang,
   onSelect,
@@ -61,19 +109,28 @@ export function Sidebar({
 }: SidebarProps) {
   const i = t(lang)
   const [pendingDelete, setPendingDelete] = useState<Conversation | null>(null)
-  const grouped = useMemo(() => groupByDate(conversations), [conversations])
+  const groups = useMemo(
+    () => groupByAgent(conversations, agents, i.unassignedAgent),
+    [conversations, agents, i.unassignedAgent],
+  )
   const name = config?.assistant_name ?? "Companion"
   const letter = (name[0] ?? "C").toUpperCase()
 
-  const renderGroup = (label: string, items: Conversation[]) => {
-    if (items.length === 0) return null
+  const renderGroup = (group: AgentGroup) => {
+    if (group.conversations.length === 0) return null
     return (
-      <div className="pt-4 pb-1">
-        <div className="px-4 pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-          {label}
+      <div key={group.agentId ?? "__unassigned__"} className="pt-4 pb-1">
+        <div className="flex items-center gap-2 px-4 pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+          <span
+            data-testid={`agent-badge-${group.agentId ?? "unassigned"}`}
+            aria-hidden="true"
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ backgroundColor: group.badgeColor }}
+          />
+          <span className="truncate">{group.label}</span>
         </div>
         <ul className="flex flex-col gap-px">
-          {items.map((c) => {
+          {group.conversations.map((c) => {
             const isActive = activeId === c.id
             return (
               <li key={c.id} className="px-2">
@@ -85,6 +142,12 @@ export function Sidebar({
                       : "text-muted-foreground hover:bg-muted",
                   )}
                 >
+                  <span
+                    data-testid={`conv-badge-${c.id}`}
+                    aria-hidden="true"
+                    className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                    style={{ backgroundColor: group.badgeColor }}
+                  />
                   <button
                     type="button"
                     onClick={() => onSelect(c.id)}
@@ -153,9 +216,7 @@ export function Sidebar({
 
         {/* Conversation list */}
         <nav className="flex-1 overflow-y-auto py-1">
-          {renderGroup(i.groupToday, grouped.today)}
-          {renderGroup(i.groupYesterday, grouped.yesterday)}
-          {renderGroup(i.groupOlder, grouped.older)}
+          {groups.map(renderGroup)}
           {conversations.length === 0 && (
             <p className="px-6 py-8 text-center text-sm text-muted-foreground">
               {i.noConversations}

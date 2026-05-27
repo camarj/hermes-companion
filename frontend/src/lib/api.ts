@@ -1,4 +1,5 @@
 import type {
+  AgentInstance,
   AppConfig,
   Conversation,
   KnownPerson,
@@ -68,8 +69,15 @@ export const api = {
       (r) => r.conversations,
     ),
 
-  createConversation: () =>
-    request<Conversation>("/api/conversations", { method: "POST" }),
+  createConversation: (agentId?: string) =>
+    request<Conversation>("/api/conversations", {
+      method: "POST",
+      body: JSON.stringify(agentId ? { agent_id: agentId } : {}),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  listAgents: () =>
+    request<{ agents: AgentInstance[] }>("/api/agents").then((r) => r.agents),
 
   getConversation: (id: string) =>
     request<{ conversation: Conversation; messages: Message[] }>(
