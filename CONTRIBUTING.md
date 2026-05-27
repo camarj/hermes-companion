@@ -62,6 +62,10 @@ with approval prompts.
   served at `/`.
 - Don't add features behind feature flags — either it's in or it isn't.
 
+## SDD / TDD
+
+User-observable changes start as an acceptance criterion in [`docs/acceptance-criteria.md`](./docs/acceptance-criteria.md), and the test for it is written before the code. Stack: `pytest` (backend), `Vitest` (frontend), `Playwright` (E2E). Voice / Realtime is exercised manually. See [`CLAUDE.md`](./CLAUDE.md) → "SDD workflow" for the full rule.
+
 ## Scope and direction
 
 The product is evolving from a single-agent shell into a polymorphic,

@@ -9,7 +9,15 @@ Voice + chat shell on OpenAI Realtime with a pluggable external agent. FastAPI b
 - **Smoke test:** `curl http://localhost:8000/api/health` → `{"status":"ok",...}`
 - **Optional vision:** `./install_face_recognition.sh` (5-10 min dlib compile)
 
-There are no tests. Backend changes get smoke-tested via the REST endpoints. Voice / Realtime changes can only be verified in a browser — say so explicitly when you ship voice work.
+Voice / Realtime can't be unit-tested today — exercise it in a browser via the `/verify` skill and say so explicitly when you ship voice work. Everything else follows the SDD workflow below.
+
+## SDD workflow
+
+Specification-driven development. Every behavioural change starts as an acceptance criterion in [`docs/acceptance-criteria.md`](./docs/acceptance-criteria.md), and the test that exercises the criterion is written **before** the code that satisfies it (red → green → refactor).
+
+**Stack:** `pytest` + `pytest-asyncio` (backend), `Vitest` + Testing Library (frontend), `Playwright` (E2E). Voice / Realtime is the standing exception — manual `/verify` only. Test runners land in a follow-up PR; until then, smoke by hand and write the AC anyway.
+
+**For Claude:** before editing a backend module or React component, open `docs/acceptance-criteria.md` and find the AC you're working under. If none exists, write one in the same branch first and confirm with the user before coding.
 
 ## What's editable without touching code
 
