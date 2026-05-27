@@ -62,12 +62,18 @@ with approval prompts.
   served at `/`.
 - Don't add features behind feature flags — either it's in or it isn't.
 
-## Scope
+## Scope and direction
 
-`hermes-companion` is meant to stay a **thin voice + chat shell** over OpenAI
-Realtime, with one pluggable external agent for "real-world" work. Features
-that belong in the agent (memory, integrations, scheduling) should live in
-whatever you wire up under `agent.command`, not in this repo.
+The product is evolving from a single-agent shell into a polymorphic,
+multi-agent platform. Before proposing a structural change, please read
+[**docs/PRD-multi-agent.md**](./docs/PRD-multi-agent.md) — it records the
+three-wave roadmap and the architectural decisions that constrain new
+work (e.g. ACP as the universal transport, `AgentBackend` as the only
+polymorphism seam, no feature flags).
+
+Features that belong inside the agent itself (memory, integrations,
+scheduling) should live in whatever you wire up under `agent.command`,
+not in this repo.
 
 ## License
 

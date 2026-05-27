@@ -191,6 +191,14 @@ the Settings → "Known people" panel becomes functional.
   you expose it to the open internet, put a reverse proxy with real auth in
   front.
 
+## Roadmap
+
+The project is evolving from a single-agent shell into a polymorphic,
+multi-agent platform. See [**docs/PRD-multi-agent.md**](./docs/PRD-multi-agent.md)
+for the full three-wave vision (multi-Hermes → omniagent → orchestrator)
+and the architectural decisions driving it. Wave 1 (multi-Hermes, local +
+remote) is currently in implementation.
+
 ## Claude Code
 
 This repo ships with [Claude Code](https://claude.com/claude-code) configuration
