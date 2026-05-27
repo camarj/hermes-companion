@@ -49,3 +49,9 @@ export type KnownPerson = {
   name: string
   count: number
 }
+
+export type ChatAttachment = {
+  name: string
+  size: number
+  content: string
+}

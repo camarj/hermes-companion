@@ -7,22 +7,41 @@ type MarkdownProps = {
   className?: string
 }
 
-/**
- * Light markdown wrapper. We don't ship a syntax highlighter yet — code
- * blocks render as monospace boxes. If the agent starts emitting fenced
- * code regularly we can layer rehype-pretty-code on top later.
- */
 export function Markdown({ children, className }: MarkdownProps) {
   return (
-    <div
-      className={cn(
-        "prose-sm max-w-none text-foreground [&>*]:my-1 [&>p]:my-2 [&>ul]:my-2 [&>ol]:my-2 [&>h1]:font-serif [&>h2]:font-serif [&>h3]:font-serif",
-        className,
-      )}
-    >
+    <div className={cn("max-w-none text-foreground leading-relaxed", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          h1: (props) => (
+            <h1
+              {...props}
+              className="mt-4 mb-2 font-serif text-xl font-medium tracking-tight first:mt-0"
+            />
+          ),
+          h2: (props) => (
+            <h2
+              {...props}
+              className="mt-4 mb-2 font-serif text-lg font-medium tracking-tight first:mt-0"
+            />
+          ),
+          h3: (props) => (
+            <h3
+              {...props}
+              className="mt-3 mb-1.5 font-serif text-base font-medium first:mt-0"
+            />
+          ),
+          h4: (props) => (
+            <h4
+              {...props}
+              className="mt-2 mb-1 text-sm font-semibold first:mt-0"
+            />
+          ),
+          p: (props) => <p {...props} className="my-2 first:mt-0 last:mb-0" />,
+          strong: (props) => (
+            <strong {...props} className="font-semibold text-foreground" />
+          ),
+          em: (props) => <em {...props} className="italic" />,
           a: (props) => (
             <a
               {...props}
@@ -30,6 +49,35 @@ export function Markdown({ children, className }: MarkdownProps) {
               rel="noreferrer"
               className="text-primary underline underline-offset-2 hover:opacity-80"
             />
+          ),
+          ul: (props) => (
+            <ul {...props} className="my-2 list-disc space-y-1 pl-5 marker:text-muted-foreground" />
+          ),
+          ol: (props) => (
+            <ol {...props} className="my-2 list-decimal space-y-1 pl-5 marker:text-muted-foreground" />
+          ),
+          li: (props) => <li {...props} className="leading-relaxed" />,
+          blockquote: (props) => (
+            <blockquote
+              {...props}
+              className="my-3 border-l-2 border-primary/60 pl-3 italic text-muted-foreground"
+            />
+          ),
+          hr: () => <hr className="my-4 border-border" />,
+          table: (props) => (
+            <div className="my-3 overflow-x-auto">
+              <table {...props} className="w-full border-collapse text-sm" />
+            </div>
+          ),
+          thead: (props) => <thead {...props} className="bg-muted/60" />,
+          th: (props) => (
+            <th
+              {...props}
+              className="border border-border px-2 py-1 text-left font-medium"
+            />
+          ),
+          td: (props) => (
+            <td {...props} className="border border-border px-2 py-1 align-top" />
           ),
           code: ({ className: cls, children: code, ...rest }) => {
             const inline = !cls?.includes("language-")
@@ -53,8 +101,6 @@ export function Markdown({ children, className }: MarkdownProps) {
             )
           },
           pre: ({ children }) => <>{children}</>,
-          ul: (props) => <ul {...props} className="list-disc pl-5" />,
-          ol: (props) => <ol {...props} className="list-decimal pl-5" />,
         }}
       >
         {children}

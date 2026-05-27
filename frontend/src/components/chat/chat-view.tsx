@@ -8,7 +8,7 @@ import { StartView } from "./start-view"
 import { ThinkingBubble } from "./thinking-bubble"
 import { t, type Lang } from "@/lib/i18n"
 import { api } from "@/lib/api"
-import type { AppConfig, User, VoiceMode } from "@/lib/types"
+import type { AppConfig, ChatAttachment, User, VoiceMode } from "@/lib/types"
 
 type ConversationMeta = { id: string; title: string | null }
 
@@ -45,19 +45,26 @@ export function ChatView({
     convIdRef.current = conversationId
   }, [conversationId])
 
+  const pendingAttachmentsRef = useRef<ChatAttachment[]>([])
+
   const transport = useMemo(
     () =>
       new DefaultChatTransport<UIMessage>({
         api: "/api/chat/stream",
         credentials: "include",
-        prepareSendMessagesRequest: ({ messages, id, body }) => ({
-          body: {
-            ...(body ?? {}),
-            id,
-            messages,
-            conversation_id: convIdRef.current,
-          },
-        }),
+        prepareSendMessagesRequest: ({ messages, id, body }) => {
+          const attachments = pendingAttachmentsRef.current
+          pendingAttachmentsRef.current = []
+          return {
+            body: {
+              ...(body ?? {}),
+              id,
+              messages,
+              conversation_id: convIdRef.current,
+              attachments,
+            },
+          }
+        },
       }),
     [],
   )
@@ -115,8 +122,14 @@ export function ChatView({
   const liveThinking = isLive ? realtime.thinking : null
   const showStart = !isLive && visibleMessages.length === 0 && !isStreaming
 
-  const handleSend = (text: string) => {
-    void sendMessage({ text })
+  const handleSend = (text: string, attachments: ChatAttachment[] = []) => {
+    pendingAttachmentsRef.current = attachments
+    const composed = attachments.length
+      ? text
+        ? `${text}\n\n${attachments.map((a) => `[${a.name}]`).join(" ")}`
+        : attachments.map((a) => `[${a.name}]`).join(" ")
+      : text
+    void sendMessage({ text: composed })
   }
 
   if (showStart) {

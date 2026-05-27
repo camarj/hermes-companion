@@ -50,6 +50,12 @@ type Dict = {
   micMute: string
   micUnmute: string
   micProcessing: string
+  attachFile: string
+  removeAttachment: string
+  attachmentTooLarge: (name: string) => string
+  attachmentTypeUnsupported: (name: string) => string
+  attachmentReadFailed: (name: string) => string
+  attachmentLimitReached: string
 }
 
 const ES: Dict = {
@@ -101,6 +107,12 @@ const ES: Dict = {
   micMute: "Silenciar micrófono",
   micUnmute: "Activar micrófono",
   micProcessing: "Procesando — clic para forzar mic on",
+  attachFile: "Adjuntar archivo",
+  removeAttachment: "Quitar adjunto",
+  attachmentTooLarge: (n) => `${n} supera el tamaño máximo (500 KB).`,
+  attachmentTypeUnsupported: (n) => `${n}: formato no soportado en esta versión.`,
+  attachmentReadFailed: (n) => `No se pudo leer ${n}.`,
+  attachmentLimitReached: "Máximo 5 archivos por mensaje.",
 }
 
 const EN: Dict = {
@@ -152,6 +164,12 @@ const EN: Dict = {
   micMute: "Mute microphone",
   micUnmute: "Unmute microphone",
   micProcessing: "Processing — click to force mic on",
+  attachFile: "Attach file",
+  removeAttachment: "Remove attachment",
+  attachmentTooLarge: (n) => `${n} exceeds the size limit (500 KB).`,
+  attachmentTypeUnsupported: (n) => `${n}: unsupported format in this release.`,
+  attachmentReadFailed: (n) => `Couldn't read ${n}.`,
+  attachmentLimitReached: "Maximum 5 files per message.",
 }
 
 const PT: Dict = {
