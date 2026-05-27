@@ -4,9 +4,11 @@ import { useEffect, useMemo, useRef } from "react"
 import { toast } from "sonner"
 import { ChatInput } from "./chat-input"
 import { MessageList } from "./message-list"
+import { StartView } from "./start-view"
 import { ThinkingBubble } from "./thinking-bubble"
+import { t, type Lang } from "@/lib/i18n"
 import { api } from "@/lib/api"
-import type { User, VoiceMode } from "@/lib/types"
+import type { AppConfig, User, VoiceMode } from "@/lib/types"
 
 type ConversationMeta = { id: string; title: string | null }
 
@@ -17,33 +19,27 @@ type RealtimeView = {
 }
 
 type ChatViewProps = {
+  config: AppConfig | null
   conversationId: string | null
   currentUser: User
   agentLabel: string
+  lang: Lang
   onConversationUpdated: (conv: ConversationMeta) => void
   realtime?: RealtimeView
 }
 
-/**
- * Chat panel.
- *
- * Owns the `useChat` instance pointed at `/api/chat/stream` (AI SDK 6 UI
- * Message Stream Protocol). Loads existing message history from the
- * backend when `conversationId` changes, and forwards the
- * `data-conversation` part back up so the parent can refresh its sidebar
- * (e.g. when the backend created a brand-new conversation on the first
- * turn).
- */
 export function ChatView({
+  config,
   conversationId,
   currentUser,
   agentLabel,
+  lang,
   onConversationUpdated,
   realtime,
 }: ChatViewProps) {
+  const i = t(lang)
   const isLive = realtime !== undefined && realtime.mode !== "chat"
-  // Track the latest conversationId via a ref so the body-prepare callback
-  // always reads the current value, even when useChat doesn't re-mount.
+
   const convIdRef = useRef(conversationId)
   useEffect(() => {
     convIdRef.current = conversationId
@@ -79,9 +75,8 @@ export function ChatView({
     },
   })
 
-  // Load history when the conversation changes. Skip while in a live voice
-  // session — the transcripts arrive over the realtime stream, and refetching
-  // would race with the live state.
+  // Load history when the conversation changes. Skip while live — transcripts
+  // arrive over the realtime stream and refetching would race.
   useEffect(() => {
     if (isLive) return
     if (!conversationId) {
@@ -95,7 +90,10 @@ export function ChatView({
         if (cancelled) return
         const ui: UIMessage[] = history.map((m, idx) => ({
           id: `db_${m.id}_${idx}`,
-          role: m.role === "system" ? "assistant" : (m.role as "user" | "assistant"),
+          role:
+            m.role === "system"
+              ? "assistant"
+              : (m.role as "user" | "assistant"),
           parts: [{ type: "text", text: m.content }],
         }))
         setMessages(ui)
@@ -115,46 +113,88 @@ export function ChatView({
 
   const visibleMessages = isLive ? realtime.liveMessages : messages
   const liveThinking = isLive ? realtime.thinking : null
+  const showStart = !isLive && visibleMessages.length === 0 && !isStreaming
 
+  const handleSend = (text: string) => {
+    void sendMessage({ text })
+  }
+
+  if (showStart) {
+    return (
+      <StartView
+        config={config}
+        lang={lang}
+        onSend={handleSend}
+        inputDisabled={!isReady && isStreaming}
+      />
+    )
+  }
+
+  // Live (voice/vision) — show only transcripts + status hint at bottom.
+  if (isLive) {
+    return (
+      <div className="flex h-full flex-col">
+        {visibleMessages.length === 0 && !liveThinking ? (
+          <StartView
+            config={config}
+            lang={lang}
+            onSend={handleSend}
+            inputDisabled
+            hintOverride={
+              realtime?.mode === "vision" ? i.visionModeHint : i.voiceModeHint
+            }
+          />
+        ) : (
+          <div className="relative flex flex-1 flex-col overflow-hidden">
+            <MessageList
+              messages={visibleMessages}
+              currentUser={currentUser}
+              agentLabel={agentLabel}
+              isStreaming={isStreaming}
+            />
+            {liveThinking && (
+              <div className="px-6 pb-2">
+                <ThinkingBubble
+                  label={agentLabel}
+                  query={liveThinking.query ?? ""}
+                />
+              </div>
+            )}
+          </div>
+        )}
+        <div className="border-t border-border bg-background px-6 py-3 text-center font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+          {realtime?.mode === "vision" ? i.visionModeHint : i.voiceModeHint}
+        </div>
+      </div>
+    )
+  }
+
+  // Chat with messages — message list + bottom input
   return (
     <div className="flex h-full flex-col">
-      {visibleMessages.length === 0 && !isStreaming && !liveThinking ? (
-        <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-          <p className="font-serif text-2xl text-foreground">
-            Hi {currentUser.name.split(" ")[0]}.
-          </p>
-          <p className="mt-2 max-w-md text-sm text-muted-foreground">
-            {isLive
-              ? "Speak when you're ready."
-              : `Ask anything. Heavy or live-data questions get routed to ${agentLabel}.`}
-          </p>
-        </div>
-      ) : (
-        <div className="relative flex flex-1 flex-col overflow-hidden">
-          <MessageList
-            messages={visibleMessages}
-            currentUser={currentUser}
-            agentLabel={agentLabel}
-            isStreaming={isStreaming}
-          />
-          {liveThinking && (
-            <div className="px-6 pb-2">
-              <ThinkingBubble
-                label={agentLabel}
-                query={liveThinking.query ?? ""}
-              />
-            </div>
-          )}
-        </div>
-      )}
+      <div className="relative flex flex-1 flex-col overflow-hidden">
+        <MessageList
+          messages={visibleMessages}
+          currentUser={currentUser}
+          agentLabel={agentLabel}
+          isStreaming={isStreaming}
+        />
+        {liveThinking && (
+          <div className="px-6 pb-2">
+            <ThinkingBubble
+              label={agentLabel}
+              query={liveThinking.query ?? ""}
+            />
+          </div>
+        )}
+      </div>
 
-      {!isLive ? (
-        <div className="border-t border-border bg-card px-6 py-4">
+      <div className="border-t border-border bg-background px-6 pt-2 pb-6">
+        <div className="mx-auto w-full max-w-[80%]">
           <ChatInput
-            onSend={(text) => {
-              void sendMessage({ text })
-            }}
+            onSend={handleSend}
             disabled={!isReady && isStreaming}
+            placeholder={i.inputPlaceholder}
           />
           {error && (
             <p className="mt-2 text-xs text-destructive">
@@ -162,13 +202,7 @@ export function ChatView({
             </p>
           )}
         </div>
-      ) : (
-        <div className="border-t border-border bg-card px-6 py-3 text-center text-xs uppercase tracking-wider text-muted-foreground">
-          {realtime?.mode === "vision"
-            ? "Vision + voice — speak naturally; the camera is live"
-            : "Voice — speak naturally"}
-        </div>
-      )}
+      </div>
     </div>
   )
 }

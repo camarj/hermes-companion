@@ -34,6 +34,17 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
   ) as Array<{ type: "reasoning"; text: string }>
 
   const text = textParts.map((p) => p.text).join("")
+  // Reasoning arrives as many small chunks; concatenate so we render ONE
+  // collapsible block per message instead of a stack of "THINKING" rows.
+  const reasoningText = reasoningParts.map((p) => p.text).join("\n\n")
+
+  // While a tool call is in flight, the assistant message exists in the SDK's
+  // state (it has a tool-* part) but has no text or reasoning yet. Render
+  // nothing — the ThinkingBubble in MessageList provides the indicator.
+  // Otherwise we'd end up stacking a ghost H avatar above the spinner.
+  if (!isUser && !text && reasoningParts.length === 0) {
+    return null
+  }
 
   return (
     <div className={cn("flex items-start gap-3", isUser && "flex-row-reverse")}>
@@ -54,15 +65,8 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
           isUser && "items-end",
         )}
       >
-        {reasoningParts.length > 0 && !isUser && (
-          <div className="flex w-full flex-col gap-1">
-            {reasoningParts.map((p, i) => (
-              <ReasoningBlock
-                key={`${message.id}-r-${i}`}
-                text={p.text}
-              />
-            ))}
-          </div>
+        {reasoningText && !isUser && (
+          <ReasoningBlock text={reasoningText} />
         )}
 
         {text && (

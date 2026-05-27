@@ -139,7 +139,8 @@ thing yourself.
 | `backend/config.py` | Loads `config.yaml`, builds the system prompt |
 | `backend/database.py` | SQLite (`companion.db`) — users seeded from config |
 | `backend/face_service.py` | Optional face recognition via `face_recognition`/dlib |
-| `frontend/static/index.html` | Single-file SPA — login, chat, voice, vision, mute, settings |
+| `frontend/src/` | React + Vite app (chat, voice, vision, settings). Built to `frontend/static/next/` and served at `/` |
+| `frontend/legacy/index.html` | Original single-file vanilla JS app, still reachable at `/legacy` |
 
 ## Modes
 

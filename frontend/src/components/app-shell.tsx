@@ -1,15 +1,16 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useState } from "react"
 import { Settings as SettingsIcon } from "lucide-react"
 import { toast } from "sonner"
 import { Sidebar } from "@/components/sidebar"
 import { SettingsPanel } from "@/components/settings-panel"
 import { ChatView } from "@/components/chat/chat-view"
 import { CameraPanel } from "@/components/voice/camera-panel"
-import { MuteButton } from "@/components/voice/mute-button"
+import { ModeBar } from "@/components/voice/mode-bar"
 import { RealtimeIndicator } from "@/components/voice/realtime-indicator"
-import { VoiceModeToggle } from "@/components/voice/voice-mode-toggle"
 import { useConversations } from "@/hooks/useConversations"
+import { useHealth } from "@/hooks/useHealth"
 import { useRealtime } from "@/hooks/useRealtime"
+import { t } from "@/lib/i18n"
 import type {
   AppConfig,
   PlaybackMode,
@@ -17,6 +18,7 @@ import type {
   ThemeMode,
   User,
 } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 type AppShellProps = {
   config: AppConfig | null
@@ -40,6 +42,9 @@ export function AppShell({
   const [activeId, setActiveId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const { conversations, refresh, remove } = useConversations(true)
+  const lang = settings.language
+  const i = t(lang)
+  const online = useHealth()
 
   const agentLabel = config?.agent_label ?? "agent"
 
@@ -67,11 +72,13 @@ export function AppShell({
     },
   })
 
-  const headerLabel = useMemo(() => {
-    if (!activeId) return "New conversation"
-    const conv = conversations.find((c) => c.id === activeId)
-    return conv?.title || "Conversation"
-  }, [activeId, conversations])
+  const statusLabel = online === false ? i.offline : i.online
+  const statusClass =
+    online === false
+      ? "text-destructive"
+      : online === true
+        ? "text-muted-foreground"
+        : "text-muted-foreground/60"
 
   return (
     <div className="flex h-dvh w-full">
@@ -80,9 +87,8 @@ export function AppShell({
         user={user}
         conversations={conversations}
         activeId={activeId}
+        lang={lang}
         onSelect={(id) => {
-          // Switching conversation while live would be confusing; bail out of
-          // voice/vision before loading another conversation's history.
           if (realtime.mode !== "chat") void realtime.setMode("chat")
           setActiveId(id)
         }}
@@ -98,53 +104,55 @@ export function AppShell({
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-4 border-b border-border bg-card px-8 py-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="eyebrow">
-              {activeId ? "Conversation" : "New"}
-            </span>
-            <span className="truncate text-sm text-foreground">
-              {headerLabel}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <RealtimeIndicator
-              connecting={realtime.connecting}
-              connected={realtime.connected}
-              autoMuted={realtime.autoMuted}
-              userMuted={realtime.userMuted}
-            />
-            <VoiceModeToggle
-              mode={realtime.mode}
-              onChange={(m) => {
-                void realtime.setMode(m)
-              }}
-              disabled={realtime.connecting}
-            />
-            {realtime.mode !== "chat" && (
-              <MuteButton
-                autoMuted={realtime.autoMuted}
-                userMuted={realtime.userMuted}
-                onClick={realtime.toggleMute}
-              />
+        {/* Slim header: status on left, settings on right */}
+        <header className="flex items-center gap-3 border-b border-border bg-card px-6 py-3">
+          <span
+            className={cn(
+              "font-mono text-[11px] uppercase tracking-[0.12em]",
+              statusClass,
             )}
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              aria-label="Settings"
-            >
-              <SettingsIcon className="h-5 w-5" />
-            </button>
-          </div>
+          >
+            {statusLabel}
+          </span>
+          <div className="flex-1" />
+          <RealtimeIndicator
+            connecting={realtime.connecting}
+            connected={realtime.connected}
+            autoMuted={realtime.autoMuted}
+            userMuted={realtime.userMuted}
+          />
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label={i.settingsAria}
+          >
+            <SettingsIcon className="h-4 w-4" />
+          </button>
         </header>
+
+        {/* Mode bar: TEMA / REPRODUCCIÓN / MODO */}
+        <ModeBar
+          lang={lang}
+          theme={settings.theme}
+          playback={settings.playback}
+          mode={realtime.mode}
+          autoMuted={realtime.autoMuted}
+          userMuted={realtime.userMuted}
+          modeDisabled={realtime.connecting}
+          onThemeChange={onThemeChange}
+          onPlaybackChange={onPlaybackChange}
+          onModeChange={(m) => void realtime.setMode(m)}
+          onToggleMute={realtime.toggleMute}
+        />
 
         <ChatView
           key={activeId ?? "new"}
+          config={config}
           conversationId={activeId}
           currentUser={user}
           agentLabel={agentLabel}
+          lang={lang}
           onConversationUpdated={handleConversationUpdated}
           realtime={{
             mode: realtime.mode,
@@ -163,9 +171,8 @@ export function AppShell({
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         settings={settings}
-        onThemeChange={onThemeChange}
+        lang={lang}
         onLanguageChange={onLanguageChange}
-        onPlaybackChange={onPlaybackChange}
       />
     </div>
   )

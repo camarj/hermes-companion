@@ -22,7 +22,7 @@ for i in 1 2 3 4 5; do
 done
 ```
 
-`--reload` watches Python files in `backend/`. The frontend has no build step — reload the browser tab to pick up `frontend/static/index.html` changes.
+`--reload` watches Python files in `backend/`. The React frontend lives in `frontend/src/` — run `cd frontend && npm run dev` for HMR on port 5173 (Vite proxies `/api/*` to 8000), or `npm run build` to update the production bundle at `frontend/static/next/` (served at `/` by the backend). The legacy single-file frontend at `frontend/legacy/index.html` has no build step — reload the tab to pick up changes.
 
 ## Smoke-test endpoints
 
@@ -66,7 +66,7 @@ If you can't run a browser, **say so** in your final report. Don't claim voice w
 
 ## Common iteration patterns
 
-- **Renaming a custom event** (`companion.foo`): grep both `backend/realtime.py` and `frontend/static/index.html` — the protocol is symmetric.
+- **Renaming a custom event** (`companion.foo`): grep `backend/realtime.py`, `frontend/src/hooks/useRealtime.ts`, and `frontend/legacy/index.html` — the protocol is symmetric across all three.
 - **Changing the system prompt**: edit `backend/config.py` (template) or `config.yaml` (override). Restart the server; the prompt is built per-session at connect time.
 - **Tweaking VAD or voice**: env vars in `.env` (`VAD_THRESHOLD`, `REALTIME_VOICE`, etc.). No code change needed.
 - **Adding a new REST endpoint**: pattern is `backend/main.py` with `get_current_user(request)` for auth.
