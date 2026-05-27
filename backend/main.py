@@ -303,26 +303,50 @@ async def api_chat_stream_legacy(
     )
 
 
+def _extract_latest_user_text(messages: list[dict]) -> str:
+    """Pull the most recent user message's text out of an AI SDK UIMessage
+    array. Each message has a `parts: [{type, text}, ...]` shape; we
+    concatenate all text parts on the last user message."""
+    if not messages:
+        return ""
+    for msg in reversed(messages):
+        if msg.get("role") != "user":
+            continue
+        parts = msg.get("parts") or []
+        chunks = [p.get("text", "") for p in parts if p.get("type") == "text"]
+        return "".join(chunks).strip()
+    return ""
+
+
 @app.post("/api/chat/stream")
-async def api_chat_stream(
-    request: Request,
-    message: str = Form(...),
-    conversation_id: Optional[str] = Form(None),
-):
+async def api_chat_stream(request: Request):
     """Vercel AI SDK 6 UI Message Stream Protocol.
 
-    Each frame is `data: <JSON>\\n\\n`. The frontend uses `useChat` from
-    `@ai-sdk/react` against this endpoint. Tool input/output frames wrap the
-    `call_agent` invocation; intermediate stdout paragraphs become reasoning
-    parts (collapsible chain-of-thought); the final paragraph streams as
-    text deltas. Conversation metadata is sent as a custom `data-conversation`
-    part so the React app can update its sidebar after a new conversation is
-    created server-side.
+    Accepts a JSON body shaped like `useChat` from `@ai-sdk/react` sends:
+        {
+          "id": "<chat-id>",
+          "messages": [{ "id", "role", "parts": [{"type":"text","text":"..."}] }],
+          "trigger": "submit-user-message",
+          "conversation_id": "..."   // custom body field from useChat({ body })
+        }
+
+    Returns an SSE stream of AI SDK 6 part frames (text-*, reasoning-*,
+    tool-input-*, tool-output-*, data-conversation, finish, [DONE]).
     """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Body must be JSON")
+
+    message = _extract_latest_user_text(body.get("messages") or [])
+    if not message:
+        raise HTTPException(status_code=400, detail="No user message in body")
+
+    conversation_id = body.get("conversation_id") or None
     if conversation_id:
         _require_conversation_access(user, conversation_id)
     else:
