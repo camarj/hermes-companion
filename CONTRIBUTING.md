@@ -62,6 +62,16 @@ with approval prompts.
   served at `/`.
 - Don't add features behind feature flags — either it's in or it isn't.
 
+## SDD / TDD discipline
+
+The project follows specification-driven development:
+
+1. Every user-observable behaviour is described as an **acceptance criterion** in [`docs/acceptance-criteria.md`](./docs/acceptance-criteria.md), mapped back to the [PRD](./docs/PRD-multi-agent.md).
+2. The corresponding **test is written before the code** that satisfies it (red → green → refactor).
+3. Test stack: `pytest` (backend), `Vitest` (frontend), `Playwright` (E2E). Voice / Realtime is the documented exception — verified manually.
+
+PRs that change behaviour without touching `docs/acceptance-criteria.md` and a corresponding test will be sent back. If your change introduces a new behaviour, add the AC first (it's a one-paragraph diff) and we'll align on it before you write code. See [`CLAUDE.md`](./CLAUDE.md) → "SDD workflow" for the full rule set.
+
 ## Scope and direction
 
 The product is evolving from a single-agent shell into a polymorphic,
