@@ -1,4 +1,10 @@
-import type { AppConfig, Conversation, Message, User } from "./types"
+import type {
+  AppConfig,
+  Conversation,
+  KnownPerson,
+  Message,
+  User,
+} from "./types"
 
 /**
  * Tiny typed wrapper around fetch().
@@ -83,6 +89,41 @@ export const api = {
   deleteConversation: (id: string) =>
     request<{ success: boolean }>(
       `/api/conversations/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+    ),
+
+  // ── Vision + known people ────────────────────────────────────────────────
+
+  visionSnapshot: (image: string, prompt: string | null) =>
+    request<{ recognized?: string[] }>("/api/vision/snapshot", {
+      method: "POST",
+      body: JSON.stringify({ image, prompt }),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  visionRecognize: (image: string) =>
+    request<{ recognized: string[] }>("/api/vision/recognize", {
+      method: "POST",
+      body: JSON.stringify({ image }),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  listPeople: () =>
+    request<{ people: KnownPerson[] }>("/api/people").then((r) => r.people),
+
+  enrollPerson: async (name: string, photo: File) => {
+    const fd = new FormData()
+    fd.append("name", name)
+    fd.append("photo", photo)
+    return request<{ success: boolean }>("/api/people/enroll", {
+      method: "POST",
+      body: fd,
+    })
+  },
+
+  deletePersonByName: (name: string) =>
+    request<{ success: boolean }>(
+      `/api/people/by-name/${encodeURIComponent(name)}`,
       { method: "DELETE" },
     ),
 }

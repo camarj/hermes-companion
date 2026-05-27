@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
-import type { Settings, ThemeMode } from "@/lib/types"
+import type { PlaybackMode, Settings, ThemeMode } from "@/lib/types"
 
 const STORAGE_KEY = "companion_settings"
 
 const DEFAULTS: Settings = {
   theme: "dark",
   language: "es",
+  playback: "private",
 }
 
 function readStored(): Settings {
@@ -55,5 +56,9 @@ export function useSettings() {
     setSettings((prev) => ({ ...prev, language }))
   }, [])
 
-  return { settings, setTheme, setLanguage }
+  const setPlayback = useCallback((playback: PlaybackMode) => {
+    setSettings((prev) => ({ ...prev, playback }))
+  }, [])
+
+  return { settings, setTheme, setLanguage, setPlayback }
 }

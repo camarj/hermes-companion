@@ -1,3 +1,4 @@
+import { KnownPeople } from "@/components/voice/known-people"
 import {
   Sheet,
   SheetContent,
@@ -5,7 +6,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import type { Settings, ThemeMode } from "@/lib/types"
+import type { PlaybackMode, Settings, ThemeMode } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type SettingsPanelProps = {
@@ -14,6 +15,7 @@ type SettingsPanelProps = {
   settings: Settings
   onThemeChange: (theme: ThemeMode) => void
   onLanguageChange: (language: string) => void
+  onPlaybackChange: (playback: PlaybackMode) => void
 }
 
 const THEMES: { label: string; value: ThemeMode }[] = [
@@ -28,16 +30,22 @@ const LANGUAGES = [
   { label: "Português", value: "pt" },
 ]
 
+const PLAYBACKS: { label: string; value: PlaybackMode }[] = [
+  { label: "Browser", value: "private" },
+  { label: "Speakers", value: "local" },
+]
+
 export function SettingsPanel({
   open,
   onOpenChange,
   settings,
   onThemeChange,
   onLanguageChange,
+  onPlaybackChange,
 }: SettingsPanelProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[min(420px,95vw)]">
+      <SheetContent side="right" className="w-[min(420px,95vw)] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Settings</SheetTitle>
           <SheetDescription>
@@ -47,9 +55,7 @@ export function SettingsPanel({
 
         <div className="mt-6 flex flex-col gap-6">
           <section>
-            <h3 className="eyebrow mb-2">
-              Theme
-            </h3>
+            <h3 className="eyebrow mb-2">Theme</h3>
             <div className="inline-flex rounded-full border border-border p-1">
               {THEMES.map((t) => (
                 <button
@@ -70,9 +76,7 @@ export function SettingsPanel({
           </section>
 
           <section>
-            <h3 className="eyebrow mb-2">
-              Language
-            </h3>
+            <h3 className="eyebrow mb-2">Language</h3>
             <select
               value={settings.language}
               onChange={(e) => onLanguageChange(e.target.value)}
@@ -85,19 +89,42 @@ export function SettingsPanel({
               ))}
             </select>
             <p className="mt-1 text-xs text-muted-foreground">
-              Used for voice transcription and default greetings. The server's
-              config.yaml is the source of truth — this is just a UI hint until
-              the chat is wired up in a later PR.
+              Used for voice transcription and default greetings.
             </p>
           </section>
 
           <section>
-            <h3 className="eyebrow mb-2">
-              Known people
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              Face enrollment will be available once the vision mode is ported
-              (migration PR 5).
+            <h3 className="eyebrow mb-2">Voice playback</h3>
+            <div className="inline-flex rounded-full border border-border p-1">
+              {PLAYBACKS.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => onPlaybackChange(p.value)}
+                  className={cn(
+                    "rounded-full px-4 py-1 text-sm transition-colors",
+                    settings.playback === p.value
+                      ? "bg-primary text-primary-foreground"
+                      : "text-foreground hover:bg-muted",
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Browser: assistant audio plays in this tab. Speakers: the server
+              hosting Companion speaks instead (useful for kiosk / shared-space
+              setups).
+            </p>
+          </section>
+
+          <section>
+            <h3 className="eyebrow mb-2">Known people</h3>
+            <KnownPeople />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Faces enrolled here are recognized in vision mode. The model
+              greets them by name when they enter the frame.
             </p>
           </section>
         </div>

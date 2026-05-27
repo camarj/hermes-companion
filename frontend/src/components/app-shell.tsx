@@ -1,11 +1,22 @@
 import { useCallback, useMemo, useState } from "react"
 import { Settings as SettingsIcon } from "lucide-react"
+import { toast } from "sonner"
 import { Sidebar } from "@/components/sidebar"
 import { SettingsPanel } from "@/components/settings-panel"
 import { ChatView } from "@/components/chat/chat-view"
+import { CameraPanel } from "@/components/voice/camera-panel"
+import { MuteButton } from "@/components/voice/mute-button"
+import { RealtimeIndicator } from "@/components/voice/realtime-indicator"
+import { VoiceModeToggle } from "@/components/voice/voice-mode-toggle"
 import { useConversations } from "@/hooks/useConversations"
-import type { AppConfig, User } from "@/lib/types"
-import type { Settings, ThemeMode } from "@/lib/types"
+import { useRealtime } from "@/hooks/useRealtime"
+import type {
+  AppConfig,
+  PlaybackMode,
+  Settings,
+  ThemeMode,
+  User,
+} from "@/lib/types"
 
 type AppShellProps = {
   config: AppConfig | null
@@ -13,6 +24,7 @@ type AppShellProps = {
   settings: Settings
   onThemeChange: (theme: ThemeMode) => void
   onLanguageChange: (language: string) => void
+  onPlaybackChange: (playback: PlaybackMode) => void
   onLogout: () => void
 }
 
@@ -22,6 +34,7 @@ export function AppShell({
   settings,
   onThemeChange,
   onLanguageChange,
+  onPlaybackChange,
   onLogout,
 }: AppShellProps) {
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -31,9 +44,6 @@ export function AppShell({
   const agentLabel = config?.agent_label ?? "agent"
 
   const handleNew = useCallback(() => {
-    // Don't pre-create on the backend; the first chat message creates the
-    // conversation server-side. Clearing activeId puts ChatView in "new
-    // conversation" mode.
     setActiveId(null)
   }, [])
 
@@ -42,12 +52,20 @@ export function AppShell({
       if (conv.id !== activeId) {
         setActiveId(conv.id)
       }
-      // Title may have been auto-generated server-side from the first message;
-      // re-fetch the list so the sidebar shows it.
       void refresh()
     },
     [activeId, refresh],
   )
+
+  const realtime = useRealtime({
+    user,
+    playback: settings.playback,
+    onError: (msg) => toast.error(msg),
+    onConversationCreated: (id) => {
+      setActiveId(id)
+      void refresh()
+    },
+  })
 
   const headerLabel = useMemo(() => {
     if (!activeId) return "New conversation"
@@ -62,8 +80,16 @@ export function AppShell({
         user={user}
         conversations={conversations}
         activeId={activeId}
-        onSelect={setActiveId}
-        onNew={handleNew}
+        onSelect={(id) => {
+          // Switching conversation while live would be confusing; bail out of
+          // voice/vision before loading another conversation's history.
+          if (realtime.mode !== "chat") void realtime.setMode("chat")
+          setActiveId(id)
+        }}
+        onNew={() => {
+          if (realtime.mode !== "chat") void realtime.setMode("chat")
+          handleNew()
+        }}
         onDelete={async (id) => {
           await remove(id)
           if (activeId === id) setActiveId(null)
@@ -81,14 +107,37 @@ export function AppShell({
               {headerLabel}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label="Settings"
-          >
-            <SettingsIcon className="h-5 w-5" />
-          </button>
+
+          <div className="flex items-center gap-3">
+            <RealtimeIndicator
+              connecting={realtime.connecting}
+              connected={realtime.connected}
+              autoMuted={realtime.autoMuted}
+              userMuted={realtime.userMuted}
+            />
+            <VoiceModeToggle
+              mode={realtime.mode}
+              onChange={(m) => {
+                void realtime.setMode(m)
+              }}
+              disabled={realtime.connecting}
+            />
+            {realtime.mode !== "chat" && (
+              <MuteButton
+                autoMuted={realtime.autoMuted}
+                userMuted={realtime.userMuted}
+                onClick={realtime.toggleMute}
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Settings"
+            >
+              <SettingsIcon className="h-5 w-5" />
+            </button>
+          </div>
         </header>
 
         <ChatView
@@ -97,8 +146,18 @@ export function AppShell({
           currentUser={user}
           agentLabel={agentLabel}
           onConversationUpdated={handleConversationUpdated}
+          realtime={{
+            mode: realtime.mode,
+            liveMessages: realtime.liveMessages,
+            thinking: realtime.thinking,
+          }}
         />
       </main>
+
+      <CameraPanel
+        videoRef={realtime.attachCameraVideo}
+        visible={realtime.mode === "vision" && realtime.cameraActive}
+      />
 
       <SettingsPanel
         open={settingsOpen}
@@ -106,6 +165,7 @@ export function AppShell({
         settings={settings}
         onThemeChange={onThemeChange}
         onLanguageChange={onLanguageChange}
+        onPlaybackChange={onPlaybackChange}
       />
     </div>
   )

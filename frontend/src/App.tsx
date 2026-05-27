@@ -9,7 +9,7 @@ import { useSettings } from "@/hooks/useSettings"
 function App() {
   const { config } = useAppConfig()
   const auth = useAuth()
-  const { settings, setTheme, setLanguage } = useSettings()
+  const { settings, setTheme, setLanguage, setPlayback } = useSettings()
 
   if (auth.status === "loading") {
     return (
@@ -36,6 +36,7 @@ function App() {
         settings={settings}
         onThemeChange={setTheme}
         onLanguageChange={setLanguage}
+        onPlaybackChange={setPlayback}
         onLogout={auth.logout}
       />
       <Toaster richColors closeButton />

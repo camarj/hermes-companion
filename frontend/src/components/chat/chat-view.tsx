@@ -4,16 +4,24 @@ import { useEffect, useMemo, useRef } from "react"
 import { toast } from "sonner"
 import { ChatInput } from "./chat-input"
 import { MessageList } from "./message-list"
+import { ThinkingBubble } from "./thinking-bubble"
 import { api } from "@/lib/api"
-import type { User } from "@/lib/types"
+import type { User, VoiceMode } from "@/lib/types"
 
 type ConversationMeta = { id: string; title: string | null }
+
+type RealtimeView = {
+  mode: VoiceMode
+  liveMessages: UIMessage[]
+  thinking: { tool: string; query: string | null } | null
+}
 
 type ChatViewProps = {
   conversationId: string | null
   currentUser: User
   agentLabel: string
   onConversationUpdated: (conv: ConversationMeta) => void
+  realtime?: RealtimeView
 }
 
 /**
@@ -31,7 +39,9 @@ export function ChatView({
   currentUser,
   agentLabel,
   onConversationUpdated,
+  realtime,
 }: ChatViewProps) {
+  const isLive = realtime !== undefined && realtime.mode !== "chat"
   // Track the latest conversationId via a ref so the body-prepare callback
   // always reads the current value, even when useChat doesn't re-mount.
   const convIdRef = useRef(conversationId)
@@ -69,8 +79,11 @@ export function ChatView({
     },
   })
 
-  // Load history when the conversation changes.
+  // Load history when the conversation changes. Skip while in a live voice
+  // session — the transcripts arrive over the realtime stream, and refetching
+  // would race with the live state.
   useEffect(() => {
+    if (isLive) return
     if (!conversationId) {
       setMessages([])
       return
@@ -95,44 +108,67 @@ export function ChatView({
     return () => {
       cancelled = true
     }
-  }, [conversationId, setMessages])
+  }, [conversationId, setMessages, isLive])
 
   const isStreaming = status === "submitted" || status === "streaming"
   const isReady = status === "ready" || status === "error"
 
+  const visibleMessages = isLive ? realtime.liveMessages : messages
+  const liveThinking = isLive ? realtime.thinking : null
+
   return (
     <div className="flex h-full flex-col">
-      {messages.length === 0 && !isStreaming ? (
+      {visibleMessages.length === 0 && !isStreaming && !liveThinking ? (
         <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
           <p className="font-serif text-2xl text-foreground">
             Hi {currentUser.name.split(" ")[0]}.
           </p>
           <p className="mt-2 max-w-md text-sm text-muted-foreground">
-            Ask anything. Heavy or live-data questions get routed to {agentLabel}.
+            {isLive
+              ? "Speak when you're ready."
+              : `Ask anything. Heavy or live-data questions get routed to ${agentLabel}.`}
           </p>
         </div>
       ) : (
-        <MessageList
-          messages={messages}
-          currentUser={currentUser}
-          agentLabel={agentLabel}
-          isStreaming={isStreaming}
-        />
+        <div className="relative flex flex-1 flex-col overflow-hidden">
+          <MessageList
+            messages={visibleMessages}
+            currentUser={currentUser}
+            agentLabel={agentLabel}
+            isStreaming={isStreaming}
+          />
+          {liveThinking && (
+            <div className="px-6 pb-2">
+              <ThinkingBubble
+                label={agentLabel}
+                query={liveThinking.query ?? ""}
+              />
+            </div>
+          )}
+        </div>
       )}
 
-      <div className="border-t border-border bg-card px-6 py-4">
-        <ChatInput
-          onSend={(text) => {
-            void sendMessage({ text })
-          }}
-          disabled={!isReady && isStreaming}
-        />
-        {error && (
-          <p className="mt-2 text-xs text-destructive">
-            {error instanceof Error ? error.message : String(error)}
-          </p>
-        )}
-      </div>
+      {!isLive ? (
+        <div className="border-t border-border bg-card px-6 py-4">
+          <ChatInput
+            onSend={(text) => {
+              void sendMessage({ text })
+            }}
+            disabled={!isReady && isStreaming}
+          />
+          {error && (
+            <p className="mt-2 text-xs text-destructive">
+              {error instanceof Error ? error.message : String(error)}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="border-t border-border bg-card px-6 py-3 text-center text-xs uppercase tracking-wider text-muted-foreground">
+          {realtime?.mode === "vision"
+            ? "Vision + voice — speak naturally; the camera is live"
+            : "Voice — speak naturally"}
+        </div>
+      )}
     </div>
   )
 }
