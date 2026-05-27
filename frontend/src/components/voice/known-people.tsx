@@ -2,9 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { X } from "lucide-react"
 import { toast } from "sonner"
 import { api } from "@/lib/api"
+import { t, type Lang } from "@/lib/i18n"
 import type { KnownPerson } from "@/lib/types"
 
-export function KnownPeople() {
+type Props = {
+  lang?: Lang
+}
+
+export function KnownPeople({ lang = "en" }: Props) {
+  const i = t(lang)
   const [people, setPeople] = useState<KnownPerson[]>([])
   const [loading, setLoading] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
@@ -31,39 +37,35 @@ export function KnownPeople() {
     const trimmed = name.trim()
     const file = fileRef.current?.files?.[0]
     if (!trimmed) {
-      toast.error("Enter a name first")
+      toast.error(i.enterName)
       return
     }
     if (!file) {
-      toast.error("Select a photo")
+      toast.error(i.selectPhoto)
       return
     }
     setEnrolling(true)
     try {
       await api.enrollPerson(trimmed, file)
-      toast.success(`${trimmed} registered`)
+      toast.success(i.registered(trimmed))
       setName("")
       if (fileRef.current) fileRef.current.value = ""
       await load()
     } catch (e) {
-      toast.error(
-        `Enrollment failed: ${e instanceof Error ? e.message : String(e)}`,
-      )
+      toast.error(e instanceof Error ? e.message : String(e))
     } finally {
       setEnrolling(false)
     }
   }
 
   const remove = async (target: string) => {
-    if (!confirm(`Remove ${target} from known people?`)) return
+    if (!confirm(i.removePerson(target))) return
     try {
       await api.deletePersonByName(target)
-      toast.success(`${target} removed`)
+      toast.success(i.removed(target))
       await load()
     } catch (e) {
-      toast.error(
-        `Delete failed: ${e instanceof Error ? e.message : String(e)}`,
-      )
+      toast.error(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -74,7 +76,7 @@ export function KnownPeople() {
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Name"
+          placeholder={lang === "es" ? "Nombre" : lang === "pt" ? "Nome" : "Name"}
           className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
         />
         <input
@@ -89,18 +91,22 @@ export function KnownPeople() {
           disabled={enrolling}
           className="self-start rounded-full bg-primary px-4 py-1.5 text-xs uppercase tracking-wider text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {enrolling ? "Uploading…" : "Enroll"}
+          {enrolling ? i.uploading : i.enroll}
         </button>
       </div>
 
       <div className="rounded-md border border-border">
         {loading ? (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-            Loading…
+            …
           </p>
         ) : people.length === 0 ? (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-            No registered people yet.
+            {lang === "es"
+              ? "Aún no hay personas registradas."
+              : lang === "pt"
+                ? "Ainda não há pessoas registradas."
+                : "No registered people yet."}
           </p>
         ) : (
           <ul className="divide-y divide-border">
@@ -112,7 +118,12 @@ export function KnownPeople() {
                 <div className="flex flex-col">
                   <span className="text-sm text-foreground">{p.name}</span>
                   <span className="text-xs text-muted-foreground">
-                    {p.count} {p.count === 1 ? "photo" : "photos"}
+                    {p.count}{" "}
+                    {lang === "es"
+                      ? p.count === 1 ? "foto" : "fotos"
+                      : lang === "pt"
+                        ? p.count === 1 ? "foto" : "fotos"
+                        : p.count === 1 ? "photo" : "photos"}
                   </span>
                 </div>
                 <button

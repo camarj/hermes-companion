@@ -6,9 +6,20 @@ type ChatInputProps = {
   onSend: (text: string) => void
   disabled?: boolean
   placeholder?: string
+  autoFocus?: boolean
 }
 
-export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
+/**
+ * Large input matching the legacy `.text-input` + `.btn-action` pair: ~96px
+ * minimum height growing to 150px, rounded-lg border with focus accent, and
+ * a round 42px send button on the right.
+ */
+export function ChatInput({
+  onSend,
+  disabled,
+  placeholder,
+  autoFocus,
+}: ChatInputProps) {
   const [value, setValue] = useState("")
   const ref = useRef<HTMLTextAreaElement>(null)
 
@@ -33,33 +44,38 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
         e.preventDefault()
         submit()
       }}
-      className="flex items-end gap-2 rounded-2xl border border-border bg-card p-2"
+      className="flex items-end gap-2"
     >
       <textarea
         ref={ref}
         value={value}
+        autoFocus={autoFocus}
         onChange={(e) => {
           setValue(e.target.value)
           const t = e.currentTarget
           t.style.height = "auto"
-          t.style.height = Math.min(t.scrollHeight, 200) + "px"
+          t.style.height = Math.min(t.scrollHeight, 150) + "px"
         }}
         onKeyDown={handleKey}
-        rows={1}
-        placeholder={placeholder ?? "Type your message…"}
+        rows={4}
+        placeholder={placeholder}
         disabled={disabled}
-        className="max-h-[200px] min-h-[2.5rem] flex-1 resize-none bg-transparent px-2 py-1.5 text-body text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
+        className={cn(
+          "flex-1 resize-none rounded-lg border border-border bg-transparent px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none disabled:opacity-30",
+          "min-h-[96px] max-h-[150px] leading-[1.55]",
+        )}
       />
       <button
         type="submit"
         disabled={disabled || !value.trim()}
-        className={cn(
-          "flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity",
-          "disabled:opacity-30 disabled:cursor-not-allowed",
-        )}
+        title="Send"
         aria-label="Send"
+        className={cn(
+          "flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full border border-primary bg-primary text-primary-foreground transition-all",
+          "hover:opacity-90 disabled:opacity-20 disabled:cursor-default",
+        )}
       >
-        <ArrowUp className="h-4 w-4" />
+        <ArrowUp className="h-[18px] w-[18px]" />
       </button>
     </form>
   )
