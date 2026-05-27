@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+testpaths = ["tests/backend"]
+pythonpath = ["backend"]
+asyncio_mode = "auto"
+python_files = ["test_*.py"]
+addopts = "-q"

@@ -53,5 +53,15 @@ frontend/.vite/
 frontend/*.tsbuildinfo
 tmp/
 
-# Playwright artifacts from local smoke testing
+# Playwright artifacts (MCP local smoke + test runner output)
 .playwright-mcp/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+.coverage.*
