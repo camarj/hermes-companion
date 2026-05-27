@@ -115,7 +115,7 @@ async def test_prompt_yields_reasoning_text_done_in_order():
     writer = _FakeWriter()
     client = AcpClient(reader, writer)
 
-    events = [ev async for ev in client.prompt("s", "ping")]
+    events = [ev async for ev in client.prompt("s", [{"type": "text", "text": "ping"}])]
 
     assert events == [
         ("reasoning", "thinking"),
@@ -169,6 +169,6 @@ async def test_prompt_ignores_known_noise_updates():
     writer = _FakeWriter()
     client = AcpClient(reader, writer)
 
-    events = [ev async for ev in client.prompt("s", "ping")]
+    events = [ev async for ev in client.prompt("s", [{"type": "text", "text": "ping"}])]
 
     assert events == [("text", "hi"), ("done", None)]

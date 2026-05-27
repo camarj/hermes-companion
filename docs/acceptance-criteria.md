@@ -111,12 +111,13 @@ Tests are written **before** the code that satisfies the AC. See `CLAUDE.md` →
 - **Then** all three fields are present (whether as ACP session params or env vars, decided by the spike).
 - **Test:** pytest integration — `tests/backend/agents/test_local_acp.py`.
 
-#### AC-W1-L3: Local image paths reach the agent unchanged
+#### AC-W1-L3: Local image attachments are inlined as ACP content blocks
 
-- **Maps to:** PRD §4.1 item 5.
+- **Maps to:** PRD §4.1 item 5. Original wording assumed file paths cross the wire; the Fase 0 spike showed ACP only accepts content blocks (`{type:"image", data, mimeType}`), so this AC was revised in PR for AC-W1-L3 to match the actual protocol shape.
 - **Given** `image_paths=["/tmp/a.png"]` on a local turn,
-- **When** the fake ACP server records its inbound attachments,
-- **Then** the path is included unchanged (no upload step for local backend).
+- **When** the ACP `session/prompt` request is sent,
+- **Then** the `prompt` array contains the user text block followed by `{type:"image", data:<base64 of /tmp/a.png>, mimeType:<detected>}`,
+- **And** no separate upload request is made (this is what distinguishes local from remote — see AC-W1-R4).
 - **Test:** pytest integration — `tests/backend/agents/test_local_acp.py`.
 
 ### Remote agent + host mode
