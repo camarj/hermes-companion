@@ -427,40 +427,46 @@
    BASE
    ============================================================ */
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/* Wrap globals in @layer base so Tailwind's @layer utilities (px-*, py-*,
+   m-*) still win — un-layered CSS would otherwise override every Tailwind
+   spacing utility despite lower specificity (CSS cascade: un-layered rules
+   trump layered ones regardless of specificity). */
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
 
-* {
-  border-color: var(--border);
-}
+  * {
+    border-color: var(--border);
+  }
 
-html {
-  scroll-behavior: smooth;
-}
+  html {
+    scroll-behavior: smooth;
+  }
 
-body {
-  background: var(--bg);
-  color: var(--fg);
-  font-family: var(--font-sans);
-  line-height: 1.55;
-  height: 100dvh;
-  -webkit-font-smoothing: antialiased;
-  transition:
-    background var(--dur-slow) var(--ease-smooth),
-    color var(--dur-slow) var(--ease-smooth);
-}
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    line-height: 1.55;
+    height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+    transition:
+      background var(--dur-slow) var(--ease-smooth),
+      color var(--dur-slow) var(--ease-smooth);
+  }
 
-a:focus-visible,
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 2px;
-  border-radius: 2px;
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
