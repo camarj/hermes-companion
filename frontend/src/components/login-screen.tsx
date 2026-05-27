@@ -56,7 +56,7 @@ export function LoginScreen({ config, onLogin }: LoginScreenProps) {
         <h1 className="mb-2 font-serif text-2xl text-foreground">
           {config?.assistant_name ?? "Companion"}
         </h1>
-        <p className="mb-8 text-xs tracking-widest text-muted-foreground uppercase">
+        <p className="eyebrow mb-8">
           {config?.company_name ?? ""}
         </p>
 

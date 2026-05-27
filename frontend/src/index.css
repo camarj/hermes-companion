@@ -1,89 +1,156 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
 /*
- * Design tokens.
+ * Editorial Design System — Inteliside
+ * Ported from Inteliside-web/app/globals.css so hermes-companion shares the
+ * same visual language. Two layers:
  *
- * Two layers:
- * 1) Raw theme vars (`--bg`, `--fg`, `--rule`) that swap based on a class on
- *    <html> (.dark / .light / .system).
- * 2) `@theme` exposes shadcn-standard semantic names (`--color-background`,
- *    `--color-primary`, etc.) as aliases of the raw vars, so shadcn components
- *    work out of the box and our brand accent maps to "primary".
+ *   1) Editorial tokens (--bg, --fg, --rule, --bg-elevated, --rule-soft, etc.)
+ *      — swap based on a class on <html> (.dark / .light / .system).
+ *   2) shadcn semantic tokens (--background, --foreground, --primary, …)
+ *      mapped onto the editorial tokens via @theme inline so generated
+ *      shadcn components Just Work and our brand teal maps to "primary".
  */
 
-@theme {
-  --color-background: var(--bg);
-  --color-foreground: var(--fg);
-  --color-card: var(--bg-elevated);
-  --color-card-foreground: var(--fg);
-  --color-popover: var(--bg-elevated);
-  --color-popover-foreground: var(--fg);
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
-  --color-primary: var(--accent);
-  --color-primary-foreground: #ffffff;
-  --color-secondary: var(--bg-subtle);
-  --color-secondary-foreground: var(--fg);
-  --color-muted: var(--bg-subtle);
-  --color-muted-foreground: var(--fg-muted);
-  --color-accent: var(--bg-subtle);
-  --color-accent-foreground: var(--fg);
-  --color-destructive: var(--danger);
-  --color-destructive-foreground: #ffffff;
-
-  --color-border: var(--rule);
-  --color-input: var(--rule);
-  --color-ring: var(--accent);
-
-  --font-serif: "Fraunces", "Source Serif 4", Georgia, serif;
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
-
-  --text-h3: 1.5rem;
-  --text-h4: 1.125rem;
-  --text-body: 1.0625rem;
-  --text-body-sm: 0.9375rem;
-  --text-meta: 0.8125rem;
-  --text-micro: 0.6875rem;
-
-  --spacing: 4px;
+  --font-sans: var(--font-geist-sans, "Geist", ui-sans-serif, system-ui, sans-serif);
+  --font-mono: var(--font-geist-mono, "Geist Mono", ui-monospace, monospace);
+  --font-serif: var(--font-fraunces, "Fraunces", Georgia, serif);
+  --font-heading: var(--font-fraunces, "Fraunces", Georgia, serif);
 
   --radius: 0.625rem;
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* ============================================================
+   EDITORIAL TOKENS — dark defaults (also applied on .dark)
+   ============================================================ */
+
 :root {
+  /* shadcn tokens */
+  --background: #070605;
+  --foreground: #ede8de;
+  --card: #0f0e0c;
+  --card-foreground: #ede8de;
+  --popover: #0f0e0c;
+  --popover-foreground: #ede8de;
+  --primary: #2d9aa5;
+  --primary-foreground: #070605;
+  --secondary: #1a1917;
+  --secondary-foreground: #ede8de;
+  --muted: #1a1917;
+  --muted-foreground: #b8b0a1;
+  --accent: #2d9aa5;
+  --accent-foreground: #ede8de;
+  --destructive: #c53030;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #2d9aa5;
+
+  /* Editorial tokens — design bundle exact */
+  --bg: #070605;
+  --bg-elevated: #141210;
+  --bg-subtle: #1c1a17;
+
+  --fg: #ede8de;
+  --fg-muted: #b8b0a1;
+  --fg-subtle: #7a7366;
+  --fg-inverse: #070605;
+
+  --rule: rgba(237, 232, 222, 0.12);
+  --rule-soft: rgba(237, 232, 222, 0.06);
+  --rule-strong: rgba(237, 232, 222, 0.28);
+
+  --accent-color: #2d9aa5;
+  --accent-hover: #3fb0bc;
+  --accent-wash: rgba(45, 154, 165, 0.14);
+
+  --glass-surface-bg: rgba(20, 18, 16, 0.72);
+
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
   --dur-fast: 180ms;
   --dur-base: 320ms;
   --dur-slow: 600ms;
   --sidebar-w: 280px;
-  --danger: #c53030;
-  --accent: #2d9aa5;
-  --accent-hover: #3fb0bc;
-  --accent-wash: rgba(45, 154, 165, 0.08);
 }
 
 .dark {
+  --background: #070605;
+  --foreground: #ede8de;
+  --card: #141210;
+  --card-foreground: #ede8de;
+  --popover: #141210;
+  --popover-foreground: #ede8de;
+  --primary: #2d9aa5;
+  --primary-foreground: #070605;
+  --secondary: #1a1917;
+  --secondary-foreground: #ede8de;
+  --muted: #1c1a17;
+  --muted-foreground: #b8b0a1;
+  --accent: #1c1a17;
+  --accent-foreground: #ede8de;
+  --border: rgba(237, 232, 222, 0.12);
+  --input: rgba(237, 232, 222, 0.1);
+
   --bg: #070605;
   --bg-elevated: #141210;
   --bg-subtle: #1c1a17;
   --fg: #ede8de;
   --fg-muted: #b8b0a1;
   --fg-subtle: #7a7366;
-  --fg-inverse: #141210;
+  --fg-inverse: #070605;
   --rule: rgba(237, 232, 222, 0.12);
   --rule-soft: rgba(237, 232, 222, 0.06);
-  --rule-strong: rgba(237, 232, 222, 0.22);
+  --rule-strong: rgba(237, 232, 222, 0.28);
+
+  --glass-surface-bg: rgba(20, 18, 16, 0.72);
   color-scheme: dark;
 }
 
-.light,
-.system {
+.light {
+  --background: #f5f1eb;
+  --foreground: #141210;
+  --card: #faf7f2;
+  --card-foreground: #141210;
+  --popover: #faf7f2;
+  --popover-foreground: #141210;
+  --primary: #2d9aa5;
+  --primary-foreground: #ffffff;
+  --secondary: #ede8de;
+  --secondary-foreground: #141210;
+  --muted: #ede8de;
+  --muted-foreground: #7a7366;
+  --accent: #ede8de;
+  --accent-foreground: #141210;
+  --border: rgba(20, 18, 16, 0.14);
+  --input: rgba(20, 18, 16, 0.08);
+
   --bg: #f5f1eb;
   --bg-elevated: #faf7f2;
   --bg-subtle: #ede8de;
@@ -94,24 +161,271 @@
   --rule: rgba(20, 18, 16, 0.14);
   --rule-soft: rgba(20, 18, 16, 0.08);
   --rule-strong: rgba(20, 18, 16, 0.3);
+
+  --glass-surface-bg: #faf7f2;
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
+.system {
+  /* Defaults to dark; overridden by media query below for light prefs */
+  --background: #070605;
+  --foreground: #ede8de;
+  --card: #141210;
+  --card-foreground: #ede8de;
+  --popover: #141210;
+  --popover-foreground: #ede8de;
+  --primary: #2d9aa5;
+  --primary-foreground: #070605;
+  --secondary: #1a1917;
+  --secondary-foreground: #ede8de;
+  --muted: #1c1a17;
+  --muted-foreground: #b8b0a1;
+  --accent: #1c1a17;
+  --accent-foreground: #ede8de;
+  --border: rgba(237, 232, 222, 0.12);
+  --input: rgba(237, 232, 222, 0.1);
+
+  --bg: #070605;
+  --bg-elevated: #141210;
+  --bg-subtle: #1c1a17;
+  --fg: #ede8de;
+  --fg-muted: #b8b0a1;
+  --fg-subtle: #7a7366;
+  --fg-inverse: #070605;
+  --rule: rgba(237, 232, 222, 0.12);
+  --rule-soft: rgba(237, 232, 222, 0.06);
+  --rule-strong: rgba(237, 232, 222, 0.28);
+
+  --glass-surface-bg: rgba(20, 18, 16, 0.72);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
   .system {
-    --bg: #070605;
-    --bg-elevated: #141210;
-    --bg-subtle: #1c1a17;
-    --fg: #ede8de;
-    --fg-muted: #b8b0a1;
+    --background: #f5f1eb;
+    --foreground: #141210;
+    --card: #faf7f2;
+    --card-foreground: #141210;
+    --popover: #faf7f2;
+    --popover-foreground: #141210;
+    --primary-foreground: #ffffff;
+    --secondary: #ede8de;
+    --secondary-foreground: #141210;
+    --muted: #ede8de;
+    --muted-foreground: #7a7366;
+    --accent: #ede8de;
+    --accent-foreground: #141210;
+    --border: rgba(20, 18, 16, 0.14);
+    --input: rgba(20, 18, 16, 0.08);
+
+    --bg: #f5f1eb;
+    --bg-elevated: #faf7f2;
+    --bg-subtle: #ede8de;
+    --fg: #141210;
+    --fg-muted: #4a453d;
     --fg-subtle: #7a7366;
-    --fg-inverse: #141210;
-    --rule: rgba(237, 232, 222, 0.12);
-    --rule-soft: rgba(237, 232, 222, 0.06);
-    --rule-strong: rgba(237, 232, 222, 0.22);
-    color-scheme: dark;
+    --fg-inverse: #faf7f2;
+    --rule: rgba(20, 18, 16, 0.14);
+    --rule-soft: rgba(20, 18, 16, 0.08);
+    --rule-strong: rgba(20, 18, 16, 0.3);
+
+    --glass-surface-bg: #faf7f2;
+    color-scheme: light;
   }
 }
+
+/* ============================================================
+   GLASS CARD SYSTEM — exact spec from Inteliside design bundle
+   ============================================================ */
+
+:root,
+.dark,
+.system {
+  --glass-shell-grad: linear-gradient(
+    to right bottom,
+    rgba(237, 232, 222, 0.22),
+    rgba(237, 232, 222, 0.04),
+    rgba(0, 0, 0, 0)
+  );
+  --glass-shell-shadow: 0 22px 40px rgba(0, 0, 0, 0.35);
+  --glass-shell-shadow-hover: 0 28px 56px rgba(0, 0, 0, 0.45),
+    0 0 18px rgba(45, 154, 165, 0.28);
+}
+
+.light {
+  --glass-shell-grad: linear-gradient(
+    to right bottom,
+    rgba(20, 18, 16, 0.18),
+    rgba(20, 18, 16, 0.04),
+    rgba(0, 0, 0, 0)
+  );
+  --glass-shell-shadow: 0 8px 24px rgba(20, 18, 16, 0.05);
+  --glass-shell-shadow-hover: 0 14px 32px rgba(20, 18, 16, 0.1),
+    0 0 14px rgba(45, 154, 165, 0.18);
+}
+
+@media (prefers-color-scheme: light) {
+  .system {
+    --glass-shell-grad: linear-gradient(
+      to right bottom,
+      rgba(20, 18, 16, 0.18),
+      rgba(20, 18, 16, 0.04),
+      rgba(0, 0, 0, 0)
+    );
+    --glass-shell-shadow: 0 8px 24px rgba(20, 18, 16, 0.05);
+    --glass-shell-shadow-hover: 0 14px 32px rgba(20, 18, 16, 0.1),
+      0 0 14px rgba(45, 154, 165, 0.18);
+  }
+}
+
+.glass-shell {
+  display: block;
+  padding: 1px;
+  border-radius: 24px;
+  background: var(--glass-shell-grad);
+  box-shadow: var(--glass-shell-shadow);
+  transition:
+    box-shadow 320ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-shell:hover {
+  box-shadow: var(--glass-shell-shadow-hover);
+}
+
+.glass-surface {
+  border-radius: 23px;
+  background: var(--glass-surface-bg);
+  box-shadow: inset 0 0 40px rgba(237, 232, 222, 0.02);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+/* ============================================================
+   EDITORIAL TYPOGRAPHY UTILITIES
+   ============================================================ */
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+
+.lead {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: clamp(1.05rem, 1.4vw, 1.2rem);
+  line-height: 1.6;
+  color: var(--fg-muted);
+}
+
+.link-editorial {
+  position: relative;
+  color: var(--fg);
+  text-decoration: none;
+  background-image: linear-gradient(var(--accent-color), var(--accent-color));
+  background-repeat: no-repeat;
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  transition:
+    background-size 320ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.link-editorial:hover {
+  background-size: 100% 1px;
+  color: var(--accent-color);
+}
+
+/* ============================================================
+   BUTTON SYSTEM — pill-shaped (Inteliside spec)
+   ============================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
+  text-decoration: none;
+  white-space: nowrap;
+  max-width: 100%;
+  text-align: center;
+}
+
+.btn-primary {
+  background: var(--accent-color);
+  color: #fff;
+  border: 1px solid transparent;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 0 24px rgba(45, 154, 165, 0.35);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--fg-muted);
+  border: 1px solid var(--rule-strong);
+}
+
+.btn-ghost:hover {
+  background: var(--accent-wash);
+  color: var(--fg);
+  border-color: var(--accent-color);
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 16px rgba(45, 154, 165, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 32px rgba(45, 154, 165, 0.45);
+  }
+}
+
+.glow-teal {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
 
 * {
   margin: 0;
@@ -119,15 +433,43 @@
   box-sizing: border-box;
 }
 
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
-  font-size: var(--text-body);
   line-height: 1.55;
   height: 100dvh;
   -webkit-font-smoothing: antialiased;
   transition:
     background var(--dur-slow) var(--ease-smooth),
     color var(--dur-slow) var(--ease-smooth);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

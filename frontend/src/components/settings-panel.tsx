@@ -47,7 +47,7 @@ export function SettingsPanel({
 
         <div className="mt-6 flex flex-col gap-6">
           <section>
-            <h3 className="mb-2 text-xs tracking-widest text-muted-foreground uppercase">
+            <h3 className="eyebrow mb-2">
               Theme
             </h3>
             <div className="inline-flex rounded-full border border-border p-1">
@@ -70,7 +70,7 @@ export function SettingsPanel({
           </section>
 
           <section>
-            <h3 className="mb-2 text-xs tracking-widest text-muted-foreground uppercase">
+            <h3 className="eyebrow mb-2">
               Language
             </h3>
             <select
@@ -92,7 +92,7 @@ export function SettingsPanel({
           </section>
 
           <section>
-            <h3 className="mb-2 text-xs tracking-widest text-muted-foreground uppercase">
+            <h3 className="eyebrow mb-2">
               Known people
             </h3>
             <p className="text-sm text-muted-foreground">

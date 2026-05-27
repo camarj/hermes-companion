@@ -62,9 +62,7 @@ export function Sidebar({
     if (items.length === 0) return null
     return (
       <div className="px-2 pt-3 pb-1">
-        <div className="px-2 pb-1 text-[0.6875rem] tracking-widest text-muted-foreground uppercase">
-          {label}
-        </div>
+        <div className="eyebrow px-2 pb-1.5">{label}</div>
         <ul className="flex flex-col gap-px">
           {items.map((c) => (
             <li key={c.id}>

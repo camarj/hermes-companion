@@ -72,14 +72,19 @@ export function AppShell({
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-border bg-card px-8 py-3">
-          <span className="flex-1 truncate font-mono text-xs tracking-widest text-muted-foreground uppercase">
-            {headerLabel}
-          </span>
+        <header className="flex items-center gap-4 border-b border-border bg-card px-8 py-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="eyebrow">
+              {activeId ? "Conversation" : "New"}
+            </span>
+            <span className="truncate text-sm text-foreground">
+              {headerLabel}
+            </span>
+          </div>
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            className="rounded p-1 text-muted-foreground hover:text-foreground"
+            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label="Settings"
           >
             <SettingsIcon className="h-5 w-5" />

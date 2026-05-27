@@ -19,7 +19,7 @@ export function ReasoningBlock({ text }: ReasoningBlockProps) {
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="rounded-md border border-rule-soft bg-muted/40">
+    <div className="rounded-md border border-border/50 bg-muted/40">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -34,7 +34,7 @@ export function ReasoningBlock({ text }: ReasoningBlockProps) {
         Thinking
       </button>
       {open && (
-        <div className="border-t border-rule-soft px-4 pt-2 pb-3 text-sm text-muted-foreground">
+        <div className="border-t border-border/50 px-4 pt-2 pb-3 text-sm text-muted-foreground">
           <Markdown>{text}</Markdown>
         </div>
       )}
