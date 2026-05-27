@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from config import agents as configured_agents
+from config import host_tokens as configured_host_tokens
 from config import team as configured_team
 
 DB_PATH = Path(__file__).parent / "companion.db"
@@ -103,10 +104,30 @@ def init_db():
 
         _seed_users(conn)
         _seed_agents(conn)
+        _seed_host_tokens(conn)
         _backfill_legacy_conversations(conn)
         conn.commit()
     finally:
         conn.close()
+
+
+def _seed_host_tokens(conn) -> None:
+    """Insert configured host_tokens that aren't in the DB yet (idempotent)."""
+    for entry in configured_host_tokens():
+        token = entry.get("token")
+        if not token:
+            continue
+        existing = conn.execute(
+            "SELECT token FROM host_tokens WHERE token = ?", (token,),
+        ).fetchone()
+        if existing:
+            continue
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT INTO host_tokens (token, label, created_at, last_used_at) "
+            "VALUES (?, ?, ?, NULL)",
+            (token, entry.get("label") or token, now),
+        )
 
 
 def _backfill_legacy_conversations(conn) -> None:
@@ -526,6 +547,45 @@ def count_conversations_for_agent(agent_id: str) -> int:
             "SELECT COUNT(*) FROM conversations WHERE agent_id = ?",
             (agent_id,),
         ).fetchone()[0]
+    finally:
+        conn.close()
+
+
+# ── Host tokens (Wave 1, Fase 3) ───────────────────────────────────────────
+
+def list_host_tokens() -> list[dict]:
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT token, label, created_at, last_used_at FROM host_tokens "
+            "ORDER BY created_at ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def verify_host_token(token: str) -> bool:
+    """Return True if `token` is registered; record the access timestamp.
+
+    Empty / falsy tokens are rejected without touching the DB.
+    """
+    if not token:
+        return False
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT token FROM host_tokens WHERE token = ?", (token,),
+        ).fetchone()
+        if not row:
+            return False
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE host_tokens SET last_used_at = ? WHERE token = ?",
+            (now, token),
+        )
+        conn.commit()
+        return True
     finally:
         conn.close()
 
