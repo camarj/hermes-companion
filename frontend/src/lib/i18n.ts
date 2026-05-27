@@ -53,6 +53,10 @@ type Dict = {
   attachmentTypeUnsupported: (name: string) => string
   attachmentReadFailed: (name: string) => string
   attachmentLimitReached: string
+  pickAgent: string
+  agent: string
+  create: string
+  unassignedAgent: string
 }
 
 const ES: Dict = {
@@ -107,6 +111,10 @@ const ES: Dict = {
   attachmentTypeUnsupported: (n) => `${n}: formato no soportado en esta versión.`,
   attachmentReadFailed: (n) => `No se pudo leer ${n}.`,
   attachmentLimitReached: "Máximo 5 archivos por mensaje.",
+  pickAgent: "Elegí con qué agente conversar.",
+  agent: "Agente",
+  create: "Crear",
+  unassignedAgent: "Sin agente",
 }
 
 const EN: Dict = {
@@ -161,6 +169,10 @@ const EN: Dict = {
   attachmentTypeUnsupported: (n) => `${n}: unsupported format in this release.`,
   attachmentReadFailed: (n) => `Couldn't read ${n}.`,
   attachmentLimitReached: "Maximum 5 files per message.",
+  pickAgent: "Choose which agent to chat with.",
+  agent: "Agent",
+  create: "Create",
+  unassignedAgent: "Unassigned",
 }
 
 const PT: Dict = {

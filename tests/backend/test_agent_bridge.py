@@ -42,7 +42,7 @@ async def test_call_agent_stream_strips_done_terminator(monkeypatch):
         ("text", "hi"),
         ("done", None),
     ])
-    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda conv_id: fake)
     monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
 
     events = [
@@ -61,7 +61,7 @@ async def test_call_agent_returns_concatenated_text(monkeypatch):
         ("text", "lo"),
         ("done", None),
     ])
-    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda conv_id: fake)
     monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
 
     answer = await agent_bridge.call_agent(
@@ -76,7 +76,7 @@ async def test_call_agent_for_voice_flattens_markdown_bullets(monkeypatch):
         ("text", "- one\n- two\n- three\n"),
         ("done", None),
     ])
-    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda conv_id: fake)
     monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
 
     answer = await agent_bridge.call_agent_for_voice(
@@ -90,7 +90,7 @@ async def test_call_agent_for_voice_flattens_markdown_bullets(monkeypatch):
 
 async def test_call_agent_passes_user_identity_via_turn_context(monkeypatch):
     fake = _FakeBackend([("text", "ok"), ("done", None)])
-    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda conv_id: fake)
     monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
 
     await agent_bridge.call_agent(
@@ -107,7 +107,7 @@ async def test_call_agent_passes_user_identity_via_turn_context(monkeypatch):
 
 async def test_call_agent_stream_forwards_image_paths(monkeypatch):
     fake = _FakeBackend([("text", "ok"), ("done", None)])
-    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda conv_id: fake)
     monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
 
     paths = ["/tmp/a.png", "/tmp/b.png"]
@@ -139,7 +139,7 @@ async def test_call_agent_stream_returns_friendly_message_when_disabled(monkeypa
 
 async def test_call_agent_returns_fallback_when_no_text_yielded(monkeypatch):
     fake = _FakeBackend([("reasoning", "thinking only"), ("done", None)])
-    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda conv_id: fake)
     monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
 
     answer = await agent_bridge.call_agent(
@@ -158,7 +158,7 @@ async def test_call_agent_stream_strips_session_event(monkeypatch):
         ("text", "hi"),
         ("done", None),
     ])
-    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda conv_id: fake)
     monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
 
     events = [
@@ -179,7 +179,7 @@ async def test_call_agent_stream_persists_session_id_when_conversation_id_given(
         ("text", "ok"),
         ("done", None),
     ])
-    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda conv_id: fake)
     monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
 
     persisted: list[tuple[str, str]] = []
@@ -205,7 +205,7 @@ async def test_call_agent_stream_skips_persist_when_no_conversation_id(monkeypat
     fake = _FakeBackend([
         ("session", "x"), ("text", "ok"), ("done", None),
     ])
-    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda conv_id: fake)
     monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
 
     called = []
@@ -230,7 +230,7 @@ async def test_call_agent_stream_loads_existing_session_id_into_context(monkeypa
     """When a conversation already has a stored session id, the facade
     fills `TurnContext.session_id` so the backend resumes."""
     fake = _FakeBackend([("session", "loaded"), ("text", "ok"), ("done", None)])
-    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda conv_id: fake)
     monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
     monkeypatch.setattr(
         agent_bridge, "get_conversation_session_id",
@@ -255,7 +255,7 @@ async def test_call_agent_stream_loads_existing_session_id_into_context(monkeypa
 async def test_call_agent_stream_skips_persist_when_session_id_unchanged(monkeypatch):
     """If the backend echoes the SAME session id we already have, no write."""
     fake = _FakeBackend([("session", "same"), ("text", "ok"), ("done", None)])
-    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda conv_id: fake)
     monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
 
     writes = []

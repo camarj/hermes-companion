@@ -12,6 +12,20 @@ export type Conversation = {
   id: string
   user_id: string
   title: string
+  agent_id?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type AgentInstance = {
+  id: string
+  label: string
+  type: string
+  transport: string
+  transport_config: Record<string, unknown>
+  system_prompt_override?: string | null
+  enabled: boolean
+  created_via: string
   created_at: string
   updated_at: string
 }

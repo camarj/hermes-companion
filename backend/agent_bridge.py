@@ -14,22 +14,59 @@ always returns a `LocalAcpBackend` — every chat goes to the local
 
 from __future__ import annotations
 
-from typing import AsyncIterator
+import os
+from typing import AsyncIterator, Optional
 
 from agents.base import AgentBackend, AgentEvent, TurnContext
 from agents.local_acp import LocalAcpBackend
+from agents.remote_acp import RemoteAcpBackend
 from config import agent_enabled
 from database import (
+    get_agent_instance,
+    get_conversation,
     get_conversation_session_id,
     update_conversation_session_id,
 )
 
 
-def _resolve_backend() -> AgentBackend:
-    """Hook for tests + Wave 2 per-conversation backend resolution.
+def _resolve_token(raw: str) -> str:
+    """Resolve a token reference that may be a literal or `env:VAR_NAME`."""
+    if raw.startswith("env:"):
+        return os.environ.get(raw[len("env:"):], "")
+    return raw
 
-    Wave 1: always LocalAcpBackend (one global Hermes process per turn).
+
+def _resolve_backend(conversation_id: Optional[str]) -> AgentBackend:
+    """Pick the right AgentBackend for this turn.
+
+    Resolution order:
+      1. No conversation_id (voice without conversation, legacy callers) → Local.
+      2. Conversation row missing or its agent_id is NULL → Local (AC-W1-B1).
+      3. agent_instance.transport == "local-acp" → LocalAcpBackend.
+      4. agent_instance.transport == "remote-acp" → RemoteAcpBackend, with
+         token resolved via `_resolve_token()`.
+      5. Anything else → Local (forward-compat for future transports).
     """
+    if not conversation_id:
+        return LocalAcpBackend()
+
+    conv = get_conversation(conversation_id)
+    agent_id = conv.get("agent_id") if conv else None
+    if not agent_id:
+        return LocalAcpBackend()
+
+    agent = get_agent_instance(agent_id)
+    if not agent:
+        return LocalAcpBackend()
+
+    transport = agent.get("transport")
+    if transport == "remote-acp":
+        cfg = agent.get("transport_config") or {}
+        return RemoteAcpBackend(
+            url=cfg.get("url", ""),
+            token=_resolve_token(cfg.get("token", "")),
+            system_prompt_override=agent.get("system_prompt_override"),
+        )
     return LocalAcpBackend()
 
 
@@ -79,7 +116,7 @@ async def call_agent_stream(
 
     prior_session = get_conversation_session_id(conversation_id) if conversation_id else None
 
-    backend = _resolve_backend()
+    backend = _resolve_backend(conversation_id)
     context = TurnContext(
         user_id=user_id,
         user_name=user_name,

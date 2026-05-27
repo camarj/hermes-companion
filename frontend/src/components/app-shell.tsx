@@ -2,14 +2,17 @@ import { useCallback, useState } from "react"
 import { Settings as SettingsIcon } from "lucide-react"
 import { toast } from "sonner"
 import { Sidebar } from "@/components/sidebar"
+import { NewConversationDialog } from "@/components/new-conversation-dialog"
 import { SettingsPanel } from "@/components/settings-panel"
 import { ChatView } from "@/components/chat/chat-view"
 import { CameraPanel } from "@/components/voice/camera-panel"
 import { ModeBar } from "@/components/voice/mode-bar"
 import { RealtimeIndicator } from "@/components/voice/realtime-indicator"
+import { useAgents } from "@/hooks/useAgents"
 import { useConversations } from "@/hooks/useConversations"
 import { useHealth } from "@/hooks/useHealth"
 import { useRealtime } from "@/hooks/useRealtime"
+import { api } from "@/lib/api"
 import { t } from "@/lib/i18n"
 import type {
   AppConfig,
@@ -38,16 +41,42 @@ export function AppShell({
 }: AppShellProps) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const { conversations, refresh, remove } = useConversations(true)
+  const { agents } = useAgents()
   const lang = settings.language
   const i = t(lang)
   const online = useHealth()
 
   const agentLabel = config?.agent_label ?? "agent"
 
+  const startConversationWithAgent = useCallback(
+    async (agentId: string | null) => {
+      try {
+        const conv = await api.createConversation(agentId ?? undefined)
+        setActiveId(conv.id)
+        void refresh()
+      } catch {
+        toast.error("Could not start conversation.")
+      } finally {
+        setPickerOpen(false)
+      }
+    },
+    [refresh],
+  )
+
   const handleNew = useCallback(() => {
+    const enabled = agents.filter((a) => a.enabled)
+    if (enabled.length >= 2) {
+      setPickerOpen(true)
+      return
+    }
+    if (enabled.length === 1) {
+      void startConversationWithAgent(enabled[0].id)
+      return
+    }
     setActiveId(null)
-  }, [])
+  }, [agents, startConversationWithAgent])
 
   const handleConversationUpdated = useCallback(
     (conv: { id: string; title: string | null }) => {
@@ -82,6 +111,7 @@ export function AppShell({
         config={config}
         user={user}
         conversations={conversations}
+        agents={agents}
         activeId={activeId}
         lang={lang}
         onSelect={(id) => {
@@ -167,6 +197,14 @@ export function AppShell({
         settings={settings}
         lang={lang}
         onLanguageChange={onLanguageChange}
+      />
+
+      <NewConversationDialog
+        open={pickerOpen}
+        agents={agents}
+        lang={lang}
+        onSelect={(id) => void startConversationWithAgent(id)}
+        onCancel={() => setPickerOpen(false)}
       />
     </div>
   )
