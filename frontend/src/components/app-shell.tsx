@@ -1,7 +1,8 @@
-import { useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { Settings as SettingsIcon } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { SettingsPanel } from "@/components/settings-panel"
+import { ChatView } from "@/components/chat/chat-view"
 import { useConversations } from "@/hooks/useConversations"
 import type { AppConfig, User } from "@/lib/types"
 import type { Settings, ThemeMode } from "@/lib/types"
@@ -25,12 +26,34 @@ export function AppShell({
 }: AppShellProps) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const { conversations, create, remove } = useConversations(true)
+  const { conversations, refresh, remove } = useConversations(true)
 
-  const handleNew = async () => {
-    const conv = await create()
-    setActiveId(conv.id)
-  }
+  const agentLabel = config?.agent_label ?? "agent"
+
+  const handleNew = useCallback(() => {
+    // Don't pre-create on the backend; the first chat message creates the
+    // conversation server-side. Clearing activeId puts ChatView in "new
+    // conversation" mode.
+    setActiveId(null)
+  }, [])
+
+  const handleConversationUpdated = useCallback(
+    (conv: { id: string; title: string | null }) => {
+      if (conv.id !== activeId) {
+        setActiveId(conv.id)
+      }
+      // Title may have been auto-generated server-side from the first message;
+      // re-fetch the list so the sidebar shows it.
+      void refresh()
+    },
+    [activeId, refresh],
+  )
+
+  const headerLabel = useMemo(() => {
+    if (!activeId) return "New conversation"
+    const conv = conversations.find((c) => c.id === activeId)
+    return conv?.title || "Conversation"
+  }, [activeId, conversations])
 
   return (
     <div className="flex h-dvh w-full">
@@ -50,8 +73,8 @@ export function AppShell({
 
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b border-border bg-card px-8 py-3">
-          <span className="flex-1 font-mono text-xs tracking-widest text-muted-foreground uppercase">
-            {activeId ? "Active" : "No conversation selected"}
+          <span className="flex-1 truncate font-mono text-xs tracking-widest text-muted-foreground uppercase">
+            {headerLabel}
           </span>
           <button
             type="button"
@@ -63,16 +86,13 @@ export function AppShell({
           </button>
         </header>
 
-        <section className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-          <p className="font-serif text-2xl text-foreground">
-            {activeId ? "Conversation ready" : `Hi ${user.name.split(" ")[0]}.`}
-          </p>
-          <p className="mt-2 max-w-md text-sm text-muted-foreground">
-            {activeId
-              ? "The chat UI lands in migration PR 4. Right now this is just the shell — the sidebar can create, list, switch, and delete conversations against the real backend."
-              : "Click + New conversation in the sidebar to spin one up. The chat UI itself ships in migration PR 4."}
-          </p>
-        </section>
+        <ChatView
+          key={activeId ?? "new"}
+          conversationId={activeId}
+          currentUser={user}
+          agentLabel={agentLabel}
+          onConversationUpdated={handleConversationUpdated}
+        />
       </main>
 
       <SettingsPanel

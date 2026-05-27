@@ -52,3 +52,6 @@ frontend/static/next/
 frontend/.vite/
 frontend/*.tsbuildinfo
 tmp/
+
+# Playwright artifacts from local smoke testing
+.playwright-mcp/
