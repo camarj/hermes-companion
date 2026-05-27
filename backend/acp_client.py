@@ -96,9 +96,16 @@ class AcpClient:
     async def prompt(
         self,
         session_id: str,
-        text: str,
+        content_blocks: list[dict],
     ) -> AsyncIterator[AgentEvent]:
-        """Send a turn and yield AgentEvent tuples until completion."""
+        """Send a turn and yield AgentEvent tuples until completion.
+
+        `content_blocks` is the ACP prompt array verbatim. For text-only
+        turns it's `[{"type":"text","text":"..."}]`. For multi-modal it
+        includes additional `{"type":"image","data":...,"mimeType":...}`
+        blocks. Callers (e.g. `LocalAcpBackend`) build the array; the
+        client just forwards it.
+        """
         msg_id = self._new_id()
         await self._send({
             "jsonrpc": "2.0",
@@ -106,7 +113,7 @@ class AcpClient:
             "method": "session/prompt",
             "params": {
                 "sessionId": session_id,
-                "prompt": [{"type": "text", "text": text}],
+                "prompt": content_blocks,
             },
         })
         while True:
@@ -146,14 +153,28 @@ def _map_update(update: dict) -> AgentEvent | None:
 
 
 @asynccontextmanager
-async def spawn_hermes_acp() -> AsyncIterator[AcpClient]:
-    """Spawn `hermes acp` and yield a connected client. Cleans up on exit."""
+async def spawn_hermes_acp(
+    *,
+    env: dict[str, str] | None = None,
+) -> AsyncIterator[AcpClient]:
+    """Spawn `hermes acp` and yield a connected client. Cleans up on exit.
+
+    `env` is merged with the parent process env so callers can supply the
+    `AGENT_REQUESTER_*` identity vars (and `PYTHONUNBUFFERED=1`) without
+    losing PATH, HOME, and other unrelated entries.
+    """
+    import os
+
+    proc_env = os.environ.copy()
+    if env:
+        proc_env.update(env)
     proc = await asyncio.create_subprocess_exec(
         "hermes",
         "acp",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=proc_env,
     )
     try:
         assert proc.stdin is not None and proc.stdout is not None
@@ -172,7 +193,7 @@ async def stream_query(query: str, cwd: str = "/tmp") -> AsyncIterator[AgentEven
     async with spawn_hermes_acp() as client:
         await client.initialize()
         session_id = await client.new_session(cwd=cwd)
-        async for event in client.prompt(session_id, query):
+        async for event in client.prompt(session_id, [{"type": "text", "text": query}]):
             yield event
 
 
