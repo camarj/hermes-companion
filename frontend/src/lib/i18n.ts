@@ -14,13 +14,10 @@ type Dict = {
   online: string
   offline: string
   modeLabelTheme: string
-  modeLabelPlayback: string
   modeLabelMode: string
   themeLight: string
   themeDark: string
   themeAuto: string
-  playbackBrowser: string
-  playbackSpeakers: string
   modeChat: string
   modeVoice: string
   modeVision: string
@@ -68,13 +65,10 @@ const ES: Dict = {
   online: "En línea",
   offline: "Sin conexión",
   modeLabelTheme: "Tema",
-  modeLabelPlayback: "Reproducción",
   modeLabelMode: "Modo",
   themeLight: "Claro",
   themeDark: "Oscuro",
   themeAuto: "Auto",
-  playbackBrowser: "Privado",
-  playbackSpeakers: "Local",
   modeChat: "Chat",
   modeVoice: "Voz",
   modeVision: "Visión",
@@ -125,13 +119,10 @@ const EN: Dict = {
   online: "Online",
   offline: "Offline",
   modeLabelTheme: "Theme",
-  modeLabelPlayback: "Playback",
   modeLabelMode: "Mode",
   themeLight: "Light",
   themeDark: "Dark",
   themeAuto: "Auto",
-  playbackBrowser: "Browser",
-  playbackSpeakers: "Speakers",
   modeChat: "Chat",
   modeVoice: "Voice",
   modeVision: "Vision",
@@ -183,13 +174,10 @@ const PT: Dict = {
   online: "Online",
   offline: "Sem conexão",
   modeLabelTheme: "Tema",
-  modeLabelPlayback: "Reprodução",
   modeLabelMode: "Modo",
   themeLight: "Claro",
   themeDark: "Escuro",
   themeAuto: "Auto",
-  playbackBrowser: "Privado",
-  playbackSpeakers: "Local",
   modeChat: "Chat",
   modeVoice: "Voz",
   modeVision: "Visão",

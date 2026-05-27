@@ -1,18 +1,16 @@
 import { Loader2, Mic, MicOff } from "lucide-react"
 import { t, type Lang } from "@/lib/i18n"
-import type { PlaybackMode, ThemeMode, VoiceMode } from "@/lib/types"
+import type { ThemeMode, VoiceMode } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 type ModeBarProps = {
   lang: Lang
   theme: ThemeMode
-  playback: PlaybackMode
   mode: VoiceMode
   autoMuted: boolean
   userMuted: boolean
   modeDisabled?: boolean
   onThemeChange: (t: ThemeMode) => void
-  onPlaybackChange: (p: PlaybackMode) => void
   onModeChange: (m: VoiceMode) => void
   onToggleMute: () => void
 }
@@ -64,13 +62,11 @@ function Pill<T extends string>({
 export function ModeBar({
   lang,
   theme,
-  playback,
   mode,
   autoMuted,
   userMuted,
   modeDisabled,
   onThemeChange,
-  onPlaybackChange,
   onModeChange,
   onToggleMute,
 }: ModeBarProps) {
@@ -92,18 +88,6 @@ export function ModeBar({
           { value: "light", label: i.themeLight },
           { value: "dark", label: i.themeDark },
           { value: "system", label: i.themeAuto },
-        ]}
-      />
-
-      <Divider />
-
-      <Label>{i.modeLabelPlayback}</Label>
-      <Pill<PlaybackMode>
-        value={playback}
-        onChange={onPlaybackChange}
-        options={[
-          { value: "private", label: i.playbackBrowser },
-          { value: "local", label: i.playbackSpeakers },
         ]}
       />
 

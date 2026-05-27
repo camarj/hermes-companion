@@ -11,8 +11,6 @@ Messages are persisted to SQLite for conversation history.
 
 import os
 import json
-import time
-import base64
 import asyncio
 import websockets
 from fastapi import WebSocket, WebSocketDisconnect
@@ -32,19 +30,13 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("VOICE_TOOLS_OPENAI_KE
 REALTIME_MODEL = os.getenv("REALTIME_MODEL", "gpt-realtime-2")
 REALTIME_VOICE = os.getenv("REALTIME_VOICE", "marin")
 
-# Server-side audio playback ("local" mode, for in-room meetings): raw PCM16
-# 24kHz mono piped to aplay's stdin — no extra deps.
-APLAY_BIN = os.getenv("APLAY_BIN", "/usr/bin/aplay")
-
-# OpenAI server-side VAD config. In LOCAL mode the backend half-duplex stops
-# mic chunks from reaching OpenAI while the assistant is speaking, so we don't
-# need the harsher LOCAL tuning that used to live here.
+# OpenAI server-side VAD config.
 VAD_THRESHOLD = float(os.getenv("VAD_THRESHOLD", "0.5"))
 VAD_SILENCE_MS = int(os.getenv("VAD_SILENCE_MS", "500"))
 VAD_PREFIX_PADDING_MS = int(os.getenv("VAD_PREFIX_PADDING_MS", "300"))
 
 
-def turn_detection_for(mode: str, vision_mode: bool = False) -> dict:
+def turn_detection_for(vision_mode: bool = False) -> dict:
     """Return the server_vad config.
 
     `vision_mode=True` disables `create_response` so the backend can inject the
@@ -131,74 +123,6 @@ async def inject_vision_message(
         return False
 
 
-class ServerSpeakers:
-    """Lazy wrapper around an aplay subprocess that consumes PCM16 24kHz mono.
-
-    Spawns aplay only when the first audio chunk arrives in local mode, and
-    tears it down on stop() or when the session ends. write() is fire-and-forget:
-    if the pipe breaks we drop the chunk and reset so the next chunk respawns.
-    """
-
-    def __init__(self) -> None:
-        self.proc: asyncio.subprocess.Process | None = None
-        self._lock = asyncio.Lock()
-
-    async def _ensure_started(self) -> None:
-        if self.proc is not None and self.proc.returncode is None:
-            return
-        try:
-            self.proc = await asyncio.create_subprocess_exec(
-                APLAY_BIN, "-q", "-f", "S16_LE", "-r", "24000", "-c", "1", "-t", "raw",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            print("[realtime] aplay started (local playback)")
-        except FileNotFoundError:
-            print(f"[realtime] aplay not found at {APLAY_BIN}; cannot play locally")
-            self.proc = None
-        except Exception as e:
-            print(f"[realtime] aplay spawn error: {e}")
-            self.proc = None
-
-    async def write(self, pcm_bytes: bytes) -> None:
-        if not pcm_bytes:
-            return
-        async with self._lock:
-            await self._ensure_started()
-            if self.proc is None or self.proc.stdin is None:
-                return
-            try:
-                self.proc.stdin.write(pcm_bytes)
-                await self.proc.stdin.drain()
-            except (BrokenPipeError, ConnectionResetError, OSError) as e:
-                print(f"[realtime] aplay pipe broken: {e}; will respawn next chunk")
-                try:
-                    self.proc.kill()
-                except Exception:
-                    pass
-                self.proc = None
-
-    async def stop(self) -> None:
-        async with self._lock:
-            if self.proc is None:
-                return
-            try:
-                if self.proc.stdin is not None:
-                    self.proc.stdin.close()
-            except Exception:
-                pass
-            try:
-                await asyncio.wait_for(self.proc.wait(), timeout=2.0)
-            except asyncio.TimeoutError:
-                try:
-                    self.proc.kill()
-                except Exception:
-                    pass
-            self.proc = None
-            print("[realtime] aplay stopped")
-
-
 def build_instructions(user_id: str) -> str:
     """System prompt for the Realtime session: core identity + per-session ctx."""
     user = get_user(user_id) if user_id else None
@@ -267,30 +191,11 @@ async def realtime_proxy(websocket: WebSocket, user_id: str = "", conversation_i
 
     assistant_text_buffer = ""
 
-    # Playback mode: "private" (browser) or "local" (server speakers).
-    playback_mode = "private"
-    server_speakers = ServerSpeakers()
-
     # Vision mode: True while the user is in the "VISION + VOICE" mode. When on,
     # we disable server_vad's create_response so the backend (not OpenAI) decides
     # when to fire response.create — that lets us inject the camera frame on
     # speech_stopped and only then ask for the answer.
     vision_mode = False
-
-    # Half-duplex in LOCAL. While the server speakers are playing the
-    # assistant (or within the post-audio tail), we drop mic chunks BEFORE
-    # forwarding them to OpenAI — so acoustic echo never reaches the model.
-    #
-    # KEY: `output_audio.done` means OpenAI finished SENDING audio, not that
-    # aplay finished PLAYING it. For long audio (6-8s), bytes arrive in
-    # ~500ms but aplay takes the real 6-8s. So tail = (audio_duration -
-    # elapsed_since_first_chunk) + safety, instead of a fixed value.
-    local_playback_active = False
-    local_unmute_task: asyncio.Task | None = None
-    playback_bytes_written = 0
-    playback_first_chunk_time: float | None = None
-    LOCAL_TAIL_SAFETY_S = float(os.getenv("LOCAL_TAIL_SAFETY_S", "1.0"))
-    LOCAL_TAIL_MAX_S = float(os.getenv("LOCAL_TAIL_MAX_S", "30.0"))
 
     pending_tasks: set[asyncio.Task] = set()
     def _spawn_bg(coro):
@@ -323,7 +228,7 @@ async def realtime_proxy(websocket: WebSocket, user_id: str = "", conversation_i
                                 "model": "whisper-1",
                                 "language": config.default_language(),
                             },
-                            "turn_detection": turn_detection_for(playback_mode, vision_mode),
+                            "turn_detection": turn_detection_for(vision_mode),
                         },
                         "output": {
                             "format": {"type": "audio/pcm", "rate": 24000},
@@ -390,8 +295,6 @@ async def realtime_proxy(websocket: WebSocket, user_id: str = "", conversation_i
 
             async def browser_to_openai():
                 """Forward browser messages to OpenAI. Intercept companion control messages."""
-                nonlocal playback_mode, local_playback_active, local_unmute_task
-                nonlocal playback_bytes_written, playback_first_chunk_time
                 nonlocal vision_mode
                 audio_buffers_received = 0
                 try:
@@ -399,37 +302,6 @@ async def realtime_proxy(websocket: WebSocket, user_id: str = "", conversation_i
                         raw_data = await websocket.receive_text()
                         msg = json.loads(raw_data)
                         msg_type = msg.get("type", "")
-
-                        if msg_type == "companion.playback_mode":
-                            new_mode = msg.get("mode", "private")
-                            if new_mode not in ("private", "local"):
-                                new_mode = "private"
-                            if new_mode != playback_mode:
-                                print(f"[realtime] playback_mode: {playback_mode} -> {new_mode}")
-                                playback_mode = new_mode
-                                if new_mode == "private":
-                                    await server_speakers.stop()
-                                    local_playback_active = False
-                                    if local_unmute_task is not None and not local_unmute_task.done():
-                                        local_unmute_task.cancel()
-                                    local_unmute_task = None
-                                    playback_bytes_written = 0
-                                    playback_first_chunk_time = None
-                                # GA requires session.type on EVERY session.update
-                                try:
-                                    await openai_ws.send(json.dumps({
-                                        "type": "session.update",
-                                        "session": {
-                                            "type": "realtime",
-                                            "audio": {"input": {
-                                                "turn_detection": turn_detection_for(new_mode),
-                                            }},
-                                        },
-                                    }))
-                                    print(f"[realtime] VAD re-tuned for {new_mode}")
-                                except Exception as e:
-                                    print(f"[realtime] VAD retune error: {e}")
-                            continue
 
                         if msg_type == "companion.vision_mode":
                             new_vision = bool(msg.get("enabled", False))
@@ -442,7 +314,7 @@ async def realtime_proxy(websocket: WebSocket, user_id: str = "", conversation_i
                                         "session": {
                                             "type": "realtime",
                                             "audio": {"input": {
-                                                "turn_detection": turn_detection_for(playback_mode, vision_mode),
+                                                "turn_detection": turn_detection_for(vision_mode),
                                             }},
                                         },
                                     }))
@@ -457,8 +329,6 @@ async def realtime_proxy(websocket: WebSocket, user_id: str = "", conversation_i
                                 print(f"[realtime] First audio buffer received from browser ({len(msg.get('audio',''))} chars base64)")
                             if audio_buffers_received % 100 == 0:
                                 print(f"[realtime] Audio buffers received: {audio_buffers_received}")
-                            if playback_mode == "local" and local_playback_active:
-                                continue
                             await openai_ws.send(raw_data)
                         else:
                             print(f"[realtime] Browser -> OpenAI: {msg_type}")
@@ -471,8 +341,7 @@ async def realtime_proxy(websocket: WebSocket, user_id: str = "", conversation_i
 
             async def openai_to_browser():
                 """Forward OpenAI messages to browser, intercept function calls, persist to DB."""
-                nonlocal assistant_text_buffer, local_playback_active, local_unmute_task
-                nonlocal playback_bytes_written, playback_first_chunk_time
+                nonlocal assistant_text_buffer
 
                 try:
                     async for raw_msg in openai_ws:
@@ -499,71 +368,6 @@ async def realtime_proxy(websocket: WebSocket, user_id: str = "", conversation_i
                                     print(f"[realtime] Saved user msg: {transcript[:60]}...")
                                 except Exception as e:
                                     print(f"[realtime] DB error (user msg): {e}")
-
-                        if (
-                            playback_mode == "local"
-                            and msg_type in ("response.output_audio.delta", "response.audio.delta")
-                        ):
-                            local_playback_active = True
-                            if local_unmute_task is not None and not local_unmute_task.done():
-                                local_unmute_task.cancel()
-                            local_unmute_task = None
-
-                            delta_b64 = msg.get("delta", "")
-                            if delta_b64:
-                                try:
-                                    pcm_bytes = base64.b64decode(delta_b64)
-                                    if playback_first_chunk_time is None:
-                                        playback_first_chunk_time = time.time()
-                                    playback_bytes_written += len(pcm_bytes)
-                                    await server_speakers.write(pcm_bytes)
-                                except Exception as e:
-                                    print(f"[realtime] local playback error: {e}")
-
-                        if (
-                            playback_mode == "local"
-                            and msg_type in ("response.output_audio.done", "response.audio.done")
-                        ):
-                            if local_unmute_task is not None and not local_unmute_task.done():
-                                local_unmute_task.cancel()
-
-                            audio_duration_s = playback_bytes_written / 48000.0
-                            elapsed_s = (
-                                time.time() - playback_first_chunk_time
-                                if playback_first_chunk_time is not None else 0.0
-                            )
-                            drain_remaining = max(0.0, audio_duration_s - elapsed_s)
-                            tail_total = min(
-                                LOCAL_TAIL_MAX_S,
-                                drain_remaining + LOCAL_TAIL_SAFETY_S,
-                            )
-                            tail_secs = tail_total
-                            audio_dur_secs = audio_duration_s
-                            elapsed_secs = elapsed_s
-
-                            async def _release_local_playback():
-                                try:
-                                    await asyncio.sleep(tail_secs)
-                                except asyncio.CancelledError:
-                                    return
-                                nonlocal local_playback_active
-                                nonlocal playback_bytes_written, playback_first_chunk_time
-                                local_playback_active = False
-                                playback_bytes_written = 0
-                                playback_first_chunk_time = None
-                                try:
-                                    await openai_ws.send(json.dumps({
-                                        "type": "input_audio_buffer.clear",
-                                    }))
-                                    print(
-                                        f"[realtime] LOCAL playback released "
-                                        f"(audio={audio_dur_secs:.2f}s, elapsed={elapsed_secs:.2f}s, "
-                                        f"tail={tail_secs:.2f}s), buffer cleared"
-                                    )
-                                except Exception as e:
-                                    print(f"[realtime] LOCAL release send error: {e}")
-
-                            local_unmute_task = _spawn_bg(_release_local_playback())
 
                         if msg_type in ("response.output_audio_transcript.delta", "response.audio_transcript.delta"):
                             assistant_text_buffer += msg.get("delta", "")
@@ -650,12 +454,6 @@ async def realtime_proxy(websocket: WebSocket, user_id: str = "", conversation_i
                 await asyncio.gather(*pending_tasks, return_exceptions=True)
             except Exception:
                 pass
-        try:
-            await server_speakers.stop()
-        except Exception as e:
-            print(f"[realtime] server_speakers cleanup error: {e}")
-        if local_unmute_task is not None and not local_unmute_task.done():
-            local_unmute_task.cancel()
         try:
             await websocket.close()
         except Exception:

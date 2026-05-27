@@ -1,6 +1,6 @@
 ---
 name: architecture
-description: Deep architectural details of hermes-companion — Realtime WebSocket event flow, the call_agent subprocess contract, half-duplex echo suppression in LOCAL playback mode, vision frame injection, conversation persistence, and the cookie auth model. Load this when modifying backend/realtime.py, backend/agent_bridge.py, or any voice/audio code path.
+description: Deep architectural details of hermes-companion — Realtime WebSocket event flow, the call_agent subprocess contract, vision frame injection, conversation persistence, and the cookie auth model. Load this when modifying backend/realtime.py, backend/agent_bridge.py, or any voice/audio code path.
 ---
 
 # hermes-companion — architecture deep-dive
@@ -9,12 +9,13 @@ description: Deep architectural details of hermes-companion — Realtime WebSock
 
 The browser opens a WS to `/api/realtime`. The backend (`backend/realtime.py`) connects to OpenAI's `wss://api.openai.com/v1/realtime?model=gpt-realtime-2` and runs two `asyncio` tasks in parallel:
 
-- **`browser_to_openai`** — forwards every browser message to OpenAI, but intercepts custom `companion.*` control messages (playback mode toggle, vision mode toggle) without forwarding them. Also enforces the half-duplex mic filter in LOCAL mode (see below).
+- **`browser_to_openai`** — forwards every browser message to OpenAI, but intercepts the custom `companion.vision_mode` control message without forwarding (used to re-tune `turn_detection.create_response`).
 - **`openai_to_browser`** — forwards every OpenAI event to the browser. It intercepts:
   - `response.function_call_arguments.done` for `call_agent` (runs the agent subprocess as a background task; **never await in the recv loop**).
   - `conversation.item.input_audio_transcription.completed` → persists the user transcript to SQLite.
   - `response.output_audio_transcript.delta` / `.done` → accumulates and flushes the assistant transcript.
-  - `response.output_audio.delta` → pipes raw PCM16 to `aplay` when in LOCAL mode.
+
+Audio playback happens entirely in the browser via `useAudioPlayback` (Web Audio API). The backend never speaks through host speakers.
 
 Session config is sent on connect via `session.update` with `instructions: build_instructions(user_id)`, `turn_detection: server_vad`, audio I/O format, voice/speed. **GA requires `session.type: "realtime"` on every `session.update`, including partial ones** — missing it is silently ignored by OpenAI.
 
@@ -33,18 +34,6 @@ When the Realtime model emits `call_agent`, the backend (`backend/agent_bridge.p
 If `agent.command` is empty/null, the tool is omitted from the session entirely — the model won't see it.
 
 **Why background tasks?** If you `await` the subprocess in the recv loop, the WS keepalive ping/pong stops and OpenAI closes the connection with code 1011 after ~30s. `_spawn_bg` keeps the task tracked so it can be cancelled cleanly on session end.
-
-## Half-duplex echo suppression (LOCAL playback)
-
-In LOCAL mode, the assistant plays through the host's speakers (via `aplay`). The browser's mic picks up that audio and would loop it back to OpenAI, causing self-triggered turns. The mitigation:
-
-1. The first `response.output_audio.delta` flips `local_playback_active = true`. From this moment, `browser_to_openai` drops `input_audio_buffer.append` messages.
-2. The same chunk is piped to a server-side `aplay` subprocess (PCM16 mono 24kHz).
-3. When `output_audio.done` fires, OpenAI is done **sending** but `aplay` is still **draining** — audio takes 6-8s real time but the bytes arrive in ~500ms.
-4. Compute the tail: `max(0, audio_duration - elapsed_since_first_chunk) + LOCAL_TAIL_SAFETY_S` (clamped to `LOCAL_TAIL_MAX_S`). `audio_duration` = `bytes_written / 48000` (24kHz mono PCM16 = 48000 bytes/sec).
-5. After the tail, send `input_audio_buffer.clear` to OpenAI to discard any echo bytes that slipped through the mic filter — belt-and-suspenders.
-
-Switching back to PRIVATE mid-session must reset `local_playback_active`, cancel the pending unmute task, and re-tune VAD.
 
 ## Vision frame injection
 

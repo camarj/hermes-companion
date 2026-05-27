@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
-import type { PlaybackMode, Settings, ThemeMode } from "@/lib/types"
+import type { Settings, ThemeMode } from "@/lib/types"
 
 const STORAGE_KEY = "companion_settings"
 
 const DEFAULTS: Settings = {
   theme: "dark",
   language: "es",
-  playback: "private",
 }
 
 function readStored(): Settings {
@@ -32,7 +31,6 @@ function readStored(): Settings {
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(() => readStored())
 
-  // Persist on change.
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
@@ -41,7 +39,6 @@ export function useSettings() {
     }
   }, [settings])
 
-  // Apply theme class to <html>.
   useEffect(() => {
     const root = document.documentElement
     root.classList.remove("dark", "light", "system")
@@ -56,9 +53,5 @@ export function useSettings() {
     setSettings((prev) => ({ ...prev, language }))
   }, [])
 
-  const setPlayback = useCallback((playback: PlaybackMode) => {
-    setSettings((prev) => ({ ...prev, playback }))
-  }, [])
-
-  return { settings, setTheme, setLanguage, setPlayback }
+  return { settings, setTheme, setLanguage }
 }
