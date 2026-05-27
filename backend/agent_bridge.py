@@ -21,12 +21,22 @@ import re
 from config import agent_command, agent_timeout, agent_enabled
 
 
-def _resolve_command(query: str, user_id: str) -> list[str]:
+def _resolve_command(
+    query: str,
+    user_id: str,
+    image_paths: list[str] | None = None,
+) -> list[str]:
     cmd = agent_command()
-    return [
+    argv = [
         arg.replace("{query}", query).replace("{user_id}", user_id)
         for arg in cmd
     ]
+    # Hermes accepts `--image <path>` (repeatable) for native multimodal input.
+    # If the wired-up agent isn't Hermes-compatible, image attachments simply
+    # won't reach the model — the user gets the text part of their turn.
+    for p in image_paths or []:
+        argv.extend(["--image", p])
+    return argv
 
 
 def _build_env(user_id: str, user_name: str, user_role: str) -> dict[str, str]:
@@ -208,6 +218,7 @@ async def call_agent_stream(
     user_id: str = "",
     user_role: str = "",
     *,
+    image_paths: list[str] | None = None,
     log_prefix: str = "[agent/stream]",
 ):
     """Run the agent and yield (kind, text) tuples in real time.
@@ -225,8 +236,9 @@ async def call_agent_stream(
         yield ("text", "No external agent is configured. Set `agent.command` in config.yaml.")
         return
 
-    argv = _resolve_command(query, user_id)
-    print(f"{log_prefix} invoking {argv[0]} (requester={user_id}): {query[:80]}")
+    argv = _resolve_command(query, user_id, image_paths=image_paths)
+    img_note = f" + {len(image_paths)} image(s)" if image_paths else ""
+    print(f"{log_prefix} invoking {argv[0]} (requester={user_id}){img_note}: {query[:80]}")
     env = _build_env(user_id, user_name, user_role)
 
     try:

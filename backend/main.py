@@ -265,20 +265,59 @@ def _extract_latest_user_text(messages: list[dict]) -> str:
 # Per-file and per-turn caps mirror the frontend (chat-input.tsx). Defense in
 # depth — the browser is the source of truth for UX but we re-check here so a
 # crafted request can't blow past the agent's context.
-_ATT_MAX_FILE_BYTES = 500 * 1024
-_ATT_MAX_TOTAL_BYTES = 1_000_000
+_ATT_MAX_FILE_BYTES = 1_000_000           # 1 MB raw (text/pdf/image bytes)
+_ATT_MAX_TOTAL_BYTES = 2_000_000          # 2 MB inline text per turn (images don't count)
 _ATT_MAX_FILES = 5
+_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "gif"}
+
+
+def _ext_of(name: str) -> str:
+    name = name.lower()
+    i = name.rfind(".")
+    return name[i + 1:] if i >= 0 else ""
+
+
+def _is_image_name(name: str) -> bool:
+    return _ext_of(name) in _IMAGE_EXTS
+
+
+def _extract_pdf_text(b64_data: str) -> str:
+    """Decode a base64-encoded PDF and return its extracted text. Raises on
+    malformed/encrypted PDFs so the caller can surface a useful error."""
+    import base64
+    import io
+    from pypdf import PdfReader
+
+    pdf_bytes = base64.b64decode(b64_data, validate=True)
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    if reader.is_encrypted:
+        raise ValueError("PDF is password-protected")
+    pages: list[str] = []
+    for i, page in enumerate(reader.pages, start=1):
+        try:
+            text = page.extract_text() or ""
+        except Exception as e:
+            text = f"[Could not extract page {i}: {e}]"
+        pages.append(text.strip())
+    return "\n\n".join(p for p in pages if p)
 
 
 def _sanitize_attachments(raw: object) -> list[dict]:
     """Validate the `attachments` field from the chat request body.
 
-    Returns a list of `{name, content}` dicts; silently drops malformed
-    entries and enforces the size/count caps."""
+    Returns a list of `{name, content, kind}` dicts.
+    - kind="text": content is the file's text (passed inline to the agent query)
+    - kind="pdf":  content is extracted text (treated like text downstream)
+    - kind="image": content stays base64; images go to the agent via `--image`
+      argv, not inlined in the query.
+
+    Drops malformed entries; surfaces PDF extraction failures inline so the
+    user/agent sees a useful placeholder instead of mysterious silence.
+    """
     if not isinstance(raw, list):
         return []
     out: list[dict] = []
-    total = 0
+    total_text = 0
     for item in raw:
         if not isinstance(item, dict):
             continue
@@ -286,31 +325,87 @@ def _sanitize_attachments(raw: object) -> list[dict]:
         content = item.get("content")
         if not isinstance(content, str):
             continue
-        encoded_len = len(content.encode("utf-8", errors="replace"))
-        if encoded_len > _ATT_MAX_FILE_BYTES:
-            continue
-        if total + encoded_len > _ATT_MAX_TOTAL_BYTES:
-            break
-        out.append({"name": name, "content": content})
-        total += encoded_len
+
+        is_pdf = name.lower().endswith(".pdf")
+        is_image = _is_image_name(name)
+
+        if is_image:
+            # Cap on the decoded image size, not the base64 wire size.
+            img_bytes_len = (len(content) * 3) // 4
+            if img_bytes_len > _ATT_MAX_FILE_BYTES:
+                continue
+            out.append({"name": name, "content": content, "kind": "image"})
+        elif is_pdf:
+            try:
+                pdf_bytes_len = (len(content) * 3) // 4
+                if pdf_bytes_len > _ATT_MAX_FILE_BYTES:
+                    continue
+                extracted = _extract_pdf_text(content) or "[PDF contained no extractable text]"
+            except Exception as e:
+                extracted = f"[Could not parse PDF: {e}]"
+            text_len = len(extracted.encode("utf-8", errors="replace"))
+            if text_len > _ATT_MAX_FILE_BYTES:
+                continue
+            if total_text + text_len > _ATT_MAX_TOTAL_BYTES:
+                break
+            out.append({"name": name, "content": extracted, "kind": "pdf"})
+            total_text += text_len
+        else:
+            text_len = len(content.encode("utf-8", errors="replace"))
+            if text_len > _ATT_MAX_FILE_BYTES:
+                continue
+            if total_text + text_len > _ATT_MAX_TOTAL_BYTES:
+                break
+            out.append({"name": name, "content": content, "kind": "text"})
+            total_text += text_len
+
         if len(out) >= _ATT_MAX_FILES:
             break
     return out
 
 
 def _compose_query_with_attachments(message: str, attachments: list[dict]) -> str:
-    """Prepend attachment content to the user's message so the agent sees one
-    flat string. Format is intentionally explicit so the agent can tell where
-    each file starts/ends without parsing markdown."""
-    if not attachments:
+    """Inline text/pdf attachments into the query; images are noted by name
+    only (their content goes to the agent via `--image` argv)."""
+    text_atts = [a for a in attachments if a.get("kind") != "image"]
+    image_atts = [a for a in attachments if a.get("kind") == "image"]
+    if not text_atts and not image_atts:
         return message
     parts: list[str] = []
-    for att in attachments:
+    for att in text_atts:
         parts.append(f"[Adjunto: {att['name']}]")
         parts.append(att["content"].rstrip())
         parts.append("---")
+    if image_atts:
+        names = ", ".join(a["name"] for a in image_atts)
+        parts.append(f"[Imágenes adjuntas: {names}]")
     parts.append(message)
     return "\n".join(p for p in parts if p)
+
+
+def _materialize_image_attachments(attachments: list[dict]) -> tuple[list[str], "str | None"]:
+    """Write image attachments to a fresh temp dir; return (paths, dir).
+    Caller is responsible for cleaning up the temp dir after the request."""
+    import base64
+    import os
+    import tempfile
+
+    images = [a for a in attachments if a.get("kind") == "image"]
+    if not images:
+        return [], None
+    temp_dir = tempfile.mkdtemp(prefix="companion-att-")
+    paths: list[str] = []
+    for idx, att in enumerate(images):
+        ext = _ext_of(att["name"]) or "bin"
+        safe = f"img_{idx}.{ext}"
+        path = os.path.join(temp_dir, safe)
+        try:
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(att["content"], validate=True))
+            paths.append(path)
+        except Exception as e:
+            print(f"[attachments] failed to write image {att['name']}: {e}")
+    return paths, temp_dir
 
 
 @app.post("/api/chat/stream")
@@ -350,6 +445,7 @@ async def api_chat_stream(request: Request):
         conversation_id = conv["id"]
 
     agent_query = _compose_query_with_attachments(message, attachments)
+    image_paths, image_temp_dir = _materialize_image_attachments(attachments)
     add_message(conversation_id, "user", message or " ".join(f"[{a['name']}]" for a in attachments))
     tool_call_id = f"call_{uuid.uuid4().hex[:12]}"
     message_id = f"msg_{uuid.uuid4().hex[:12]}"
@@ -359,6 +455,8 @@ async def api_chat_stream(request: Request):
         return f"data: {json.dumps(obj)}\n\n"
 
     async def generate():
+        import shutil
+
         full_answer_parts: list[str] = []
         text_started = False
         reasoning_index = 0
@@ -382,6 +480,7 @@ async def api_chat_stream(request: Request):
                 user_name=user["name"],
                 user_id=user["id"],
                 user_role=user.get("role", ""),
+                image_paths=image_paths,
             ):
                 if kind == "reasoning":
                     reasoning_index += 1
@@ -412,6 +511,9 @@ async def api_chat_stream(request: Request):
             })
             yield "data: [DONE]\n\n"
             return
+        finally:
+            if image_temp_dir:
+                shutil.rmtree(image_temp_dir, ignore_errors=True)
 
         if text_started:
             yield frame({"type": "text-end", "id": text_id})

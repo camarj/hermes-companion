@@ -14,7 +14,7 @@ type ChatInputProps = {
 }
 
 const MAX_FILES = 5
-const MAX_FILE_BYTES = 500 * 1024
+const MAX_FILE_BYTES = 1_000_000
 const TEXT_EXTS = new Set([
   "txt", "md", "markdown", "mdown", "mkd",
   "csv", "tsv", "json", "jsonl", "ndjson",
@@ -27,10 +27,25 @@ const TEXT_EXTS = new Set([
   "cpp", "cc", "cxx", "c", "h", "hpp",
   "xml", "svg",
 ])
+const BINARY_EXTS = new Set(["pdf", "png", "jpg", "jpeg", "webp", "gif"])
 
 function extOf(name: string): string {
   const i = name.lastIndexOf(".")
   return i >= 0 ? name.slice(i + 1).toLowerCase() : ""
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  // btoa() needs a binary string; chunk to avoid blowing the call stack on
+  // large buffers (~1 MB PDF = ~1M chars).
+  let binary = ""
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(
+      null,
+      Array.from(bytes.subarray(i, i + chunk)),
+    )
+  }
+  return btoa(binary)
 }
 
 export function ChatInput({
@@ -56,7 +71,8 @@ export function ChatInput({
     const accepted: ChatAttachment[] = []
     for (const file of files) {
       const ext = extOf(file.name)
-      if (!TEXT_EXTS.has(ext)) {
+      const isBinary = BINARY_EXTS.has(ext)
+      if (!TEXT_EXTS.has(ext) && !isBinary) {
         toast.error(i.attachmentTypeUnsupported(file.name))
         continue
       }
@@ -65,7 +81,9 @@ export function ChatInput({
         continue
       }
       try {
-        const content = await file.text()
+        const content = isBinary
+          ? bytesToBase64(new Uint8Array(await file.arrayBuffer()))
+          : await file.text()
         accepted.push({ name: file.name, size: file.size, content })
       } catch {
         toast.error(i.attachmentReadFailed(file.name))
