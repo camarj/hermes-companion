@@ -27,18 +27,18 @@ export function ThinkingBubble({ label, query }: ThinkingBubbleProps) {
       <div className="flex h-8 w-8 items-center justify-center rounded-full border border-primary text-xs text-primary">
         H
       </div>
-      <div className="flex-1 rounded-md border border-dashed border-rule px-4 py-3 text-sm text-muted-foreground">
+      <div className="flex-1 rounded-md border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
         <div className="flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span>
             Querying {label}
-            <span className="ml-2 font-mono text-xs text-fg-subtle">
+            <span className="ml-2 font-mono text-xs text-muted-foreground/70">
               {elapsed}s
             </span>
           </span>
         </div>
         {query && (
-          <p className="mt-2 truncate text-xs text-fg-subtle">{query}</p>
+          <p className="mt-2 truncate text-xs text-muted-foreground/70">{query}</p>
         )}
       </div>
     </div>
