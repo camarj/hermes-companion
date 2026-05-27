@@ -45,6 +45,16 @@ Tests are written **before** the code that satisfies the AC. See `CLAUDE.md` →
 - **Then** zero matches are returned.
 - **Test:** pytest unit — `tests/backend/test_no_legacy_parser.py`.
 
+#### AC-W1-A4: ACP client speaks JSON-RPC over stdio and maps events
+
+- **Maps to:** PRD §3.1, Plan Fase 0 (spike). Prerequisite for AC-W1-L1.
+- **Given** an `AcpClient` instantiated with fake stdin/stdout streams that emit canned `agent_thought_chunk` and `agent_message_chunk` notifications,
+- **When** `prompt(session_id, "ping")` is iterated to completion,
+- **Then** at least one `("reasoning", str)` event is yielded for every `agent_thought_chunk`,
+- **And** at least one `("text", str)` event is yielded for every `agent_message_chunk`,
+- **And** a final `("done", None)` event is yielded when the `session/prompt` response arrives.
+- **Test:** pytest integration — `tests/backend/agents/test_acp_client.py`.
+
 ### Data model & migration
 
 #### AC-W1-D1: First boot creates the new tables idempotently
