@@ -53,7 +53,7 @@ SQLite is synchronous and Python's sqlite3 doesn't release the GIL during fsync.
 
 ## 7. The `companion.*` protocol is symmetric
 
-If you rename or add a custom event in `backend/realtime.py`, the matching handler must exist in `frontend/static/index.html`. The protocol is small and easy to grep — verify both sides agree.
+If you rename or add a custom event in `backend/realtime.py`, the matching handler must exist in the React port (`frontend/src/hooks/useRealtime.ts`) and the legacy single-file frontend (`frontend/legacy/index.html`). The protocol is small and easy to grep — verify all sides agree.
 
 **Red flag:** a new `companion.*` event in Python with no corresponding listener in the frontend (or vice versa).
 

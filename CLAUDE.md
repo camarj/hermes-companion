@@ -1,6 +1,6 @@
 # hermes-companion
 
-Voice + chat shell on OpenAI Realtime with a pluggable external agent. FastAPI backend, SQLite, single-file vanilla JS frontend (no build step).
+Voice + chat shell on OpenAI Realtime with a pluggable external agent. FastAPI backend, SQLite, Vite + React + Tailwind v4 frontend (built to `frontend/static/next/`). The legacy single-file vanilla JS frontend is reachable at `/legacy` until the final migration PR.
 
 ## Bash commands you'll need
 
@@ -17,8 +17,8 @@ There are no tests. Backend changes get smoke-tested via the REST endpoints. Voi
 
 ## Code style
 
-- **No new deps without discussion.** Keep `requirements.txt` lean.
-- **Frontend stays one file** (`frontend/static/index.html`). No bundler, no framework.
+- **No new deps without discussion.** Keep `requirements.txt` and `frontend/package.json` lean.
+- **Frontend lives in `frontend/src/` (React + TS).** Build output goes to `frontend/static/next/`. The Inteliside editorial CSS tokens live in `frontend/src/index.css` — keep them inside `@layer base` so Tailwind utilities still win.
 - **Default to no comments.** Only add one when the *why* is non-obvious (a hidden constraint, a subtle workaround). Never narrate what the code does.
 - Backend↔browser custom events use the `companion.*` prefix. Native OpenAI Realtime events keep their original names.
 - Tool name exposed to the model: `call_agent`. Pluggable backend lives in `backend/agent_bridge.py`.

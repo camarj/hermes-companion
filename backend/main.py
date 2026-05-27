@@ -53,6 +53,8 @@ app.add_middleware(
 )
 
 frontend_path = Path(__file__).parent.parent / "frontend" / "static"
+react_build_path = frontend_path / "next"
+legacy_path = Path(__file__).parent.parent / "frontend" / "legacy"
 
 
 def get_current_user(request: Request) -> Optional[dict]:
@@ -246,63 +248,6 @@ def _chunk_for_streaming(text: str, chunk_chars: int = 40):
         pos = end
 
 
-@app.post("/api/chat/stream-legacy")
-async def api_chat_stream_legacy(
-    request: Request,
-    message: str = Form(...),
-    conversation_id: Optional[str] = Form(None),
-):
-    """Custom SSE shape consumed by the legacy single-file frontend at /.
-
-    Kept around until migration PR 6 (switchover) so the old HTML keeps
-    working. The new React app at /static/next/ uses /api/chat/stream which
-    speaks the Vercel AI SDK 6 UI Message Stream Protocol.
-    """
-    user = get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    if conversation_id:
-        _require_conversation_access(user, conversation_id)
-    else:
-        conv = create_conversation(user["id"])
-        conversation_id = conv["id"]
-
-    add_message(conversation_id, "user", message)
-    tool_label = config.agent_label() or "agent"
-
-    async def generate():
-        yield f"data: {json.dumps({'type': 'tool_started', 'tool': tool_label, 'query': message})}\n\n"
-
-        try:
-            answer = await call_agent(
-                message,
-                user_name=user["name"],
-                user_id=user["id"],
-                user_role=user.get("role", ""),
-            )
-        except Exception as exc:
-            yield f"data: {json.dumps({'type': 'tool_finished', 'tool': tool_label})}\n\n"
-            yield f"data: {json.dumps({'type': 'error', 'message': f'{type(exc).__name__}: {exc}'})}\n\n"
-            return
-
-        yield f"data: {json.dumps({'type': 'tool_finished', 'tool': tool_label})}\n\n"
-        yield f"data: {json.dumps({'type': 'text', 'content': answer})}\n\n"
-
-        if answer.strip():
-            add_message(conversation_id, "assistant", answer.strip())
-            touch_conversation(conversation_id)
-        conv = get_conversation(conversation_id)
-
-        yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation_id, 'title': conv['title'] if conv else None})}\n\n"
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
 def _extract_latest_user_text(messages: list[dict]) -> str:
     """Pull the most recent user message's text out of an AI SDK UIMessage
     array. Each message has a `parts: [{type, text}, ...]` shape; we
@@ -452,10 +397,29 @@ async def api_chat_stream(request: Request):
 
 @app.get("/")
 async def root():
-    index_path = frontend_path / "index.html"
+    """Serve the React build. start.sh auto-builds it on first launch."""
+    index_path = react_build_path / "index.html"
     if index_path.exists():
         return FileResponse(str(index_path))
-    return HTMLResponse(f"<h1>{config.assistant_name()} — frontend not found</h1>")
+    return HTMLResponse(
+        f"<h1>{config.assistant_name()} — React build missing</h1>"
+        "<p>Run <code>cd frontend && npm run build</code> "
+        "(or restart with <code>./start.sh</code>).</p>"
+    )
+
+
+@app.get("/legacy")
+async def legacy():
+    """Serve the original single-file vanilla JS frontend.
+
+    Kept reachable for one release after the React switchover so anyone with
+    the old URL bookmarked can still get to it. Scheduled to be removed in the
+    final migration PR.
+    """
+    index_path = legacy_path / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    raise HTTPException(status_code=404, detail="Legacy frontend not found")
 
 
 @app.get("/api/health")
@@ -468,8 +432,14 @@ async def health():
     }
 
 
+# /static serves the React build's hashed assets (CSS/JS) at /static/next/...
+# html=True lets /static/next/ resolve to index.html for direct navigation.
 if frontend_path.exists():
-    app.mount("/static", StaticFiles(directory=str(frontend_path)), name="static")
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(frontend_path), html=True),
+        name="static",
+    )
 
 
 # ---------------------------------------------------------------------------

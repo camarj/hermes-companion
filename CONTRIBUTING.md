@@ -57,8 +57,10 @@ with approval prompts.
 - Python: keep functions small, prefer `asyncio` over threads where the rest of
   the code is async. No new heavy deps without discussion (we keep the base
   `requirements.txt` lean so `pip install` stays fast).
-- JS: the frontend is intentionally single-file (`frontend/static/index.html`).
-  Don't introduce a build step.
+- TS/React: the React app lives in `frontend/src/` (Vite + React 19 +
+  Tailwind v4). The build output goes to `frontend/static/next/` and is
+  served at `/`. The legacy single-file vanilla JS app at
+  `frontend/legacy/index.html` is reachable at `/legacy` for one release.
 - Don't add features behind feature flags — either it's in or it isn't.
 
 ## Scope
