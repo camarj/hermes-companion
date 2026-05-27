@@ -385,10 +385,12 @@ explicitly waived.
 
 ## 9. Document conventions
 
-- This file is the durable PRD. Implementation plans for each wave live
-  in their respective PRs and tracked issues.
+- This file is the durable PRD. The verifiable counterpart is
+  [`acceptance-criteria.md`](./acceptance-criteria.md) — every
+  requirement here maps to one or more AC there. See `CLAUDE.md` →
+  "SDD workflow" for how AC become tests.
 - Update the **Status** and **Last updated** lines at the top whenever a
   wave changes state.
 - Decisions are recorded in §3 (cross-wave) and §4.3 / §5 / §6 (per
   wave). Reversing a recorded decision requires updating this document
-  in the same PR that introduces the change.
+  in the same PR, alongside the corresponding AC.
