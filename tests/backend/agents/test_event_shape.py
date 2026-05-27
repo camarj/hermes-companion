@@ -13,6 +13,7 @@ def test_valid_events_pass_the_guard():
     assert is_agent_event(("text", "hello"))
     assert is_agent_event(("reasoning", "thinking"))
     assert is_agent_event(("tool", {"name": "search", "args": {}}))
+    assert is_agent_event(("session", "abc-123"))
     assert is_agent_event(("done", None))
 
 
@@ -20,6 +21,7 @@ def test_invalid_events_are_rejected():
     assert not is_agent_event(("text", 123))  # payload must be str
     assert not is_agent_event(("reasoning", None))
     assert not is_agent_event(("tool", "not a dict"))
+    assert not is_agent_event(("session", 123))  # payload must be str
     assert not is_agent_event(("done", "not None"))
     assert not is_agent_event(("unknown_kind", "x"))
     assert not is_agent_event(("text",))  # too few elements

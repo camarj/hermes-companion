@@ -87,7 +87,10 @@ def agent_config() -> dict[str, Any]:
 
 
 def agent_enabled() -> bool:
-    return bool(agent_config().get("command"))
+    """True iff at least one agent is configured (modern list or legacy block)."""
+    if agent_config().get("command"):
+        return True
+    return any(a.get("id") for a in agents())
 
 
 def agent_label() -> str:

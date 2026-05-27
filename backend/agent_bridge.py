@@ -19,6 +19,10 @@ from typing import AsyncIterator
 from agents.base import AgentBackend, AgentEvent, TurnContext
 from agents.local_acp import LocalAcpBackend
 from config import agent_enabled
+from database import (
+    get_conversation_session_id,
+    update_conversation_session_id,
+)
 
 
 def _resolve_backend() -> AgentBackend:
@@ -54,6 +58,7 @@ async def call_agent_stream(
     user_role: str = "",
     *,
     image_paths: list[str] | None = None,
+    conversation_id: str | None = None,
     log_prefix: str = "[agent/local_acp]",
 ) -> AsyncIterator[tuple[str, str]]:
     """Yield `(kind, text)` tuples for each AgentEvent of kind text or reasoning.
@@ -61,18 +66,35 @@ async def call_agent_stream(
     The terminal `("done", None)` event is consumed internally; callers
     just iterate until the generator is exhausted (matches the old
     contract).
+
+    When `conversation_id` is given (AC-W1-D4), the facade:
+      * loads the stored `hermes_session_id` and puts it on the
+        TurnContext so the backend resumes the native session;
+      * captures the `("session", id)` event the backend emits and
+        persists it back to the conversation row if it changed.
     """
     if not agent_enabled():
         yield ("text", _DISABLED_MESSAGE)
         return
 
+    prior_session = get_conversation_session_id(conversation_id) if conversation_id else None
+
     backend = _resolve_backend()
-    context = TurnContext(user_id=user_id, user_name=user_name, user_role=user_role)
+    context = TurnContext(
+        user_id=user_id,
+        user_name=user_name,
+        user_role=user_role,
+        session_id=prior_session,
+    )
     print(f"{log_prefix} stream user={user_id} query={query[:80]!r}")
 
     async for kind, payload in backend.stream(query, context, image_paths=image_paths):
         if kind == "done":
             return
+        if kind == "session" and isinstance(payload, str):
+            if conversation_id and payload != prior_session:
+                update_conversation_session_id(conversation_id, payload)
+            continue
         if kind in ("text", "reasoning") and isinstance(payload, str):
             yield (kind, payload)
         # "tool" events not yet surfaced in the UI — silently dropped.
@@ -84,6 +106,7 @@ async def call_agent(
     user_id: str = "",
     user_role: str = "",
     *,
+    conversation_id: str | None = None,
     log_prefix: str = "[agent]",
 ) -> str:
     """Run a turn and return the full assistant message as one string."""
@@ -93,6 +116,7 @@ async def call_agent(
         user_name=user_name,
         user_id=user_id,
         user_role=user_role,
+        conversation_id=conversation_id,
         log_prefix=log_prefix,
     ):
         if kind == "text":
@@ -105,6 +129,8 @@ async def call_agent_for_voice(
     user_name: str = "",
     user_id: str = "",
     user_role: str = "",
+    *,
+    conversation_id: str | None = None,
 ) -> str:
     """Voice variant: flattens bullets / headings so TTS reads naturally."""
     answer = await call_agent(
@@ -112,6 +138,7 @@ async def call_agent_for_voice(
         user_name=user_name,
         user_id=user_id,
         user_role=user_role,
+        conversation_id=conversation_id,
         log_prefix="[realtime/agent]",
     )
     return _flatten_for_voice(answer)

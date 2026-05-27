@@ -17,17 +17,29 @@ from agents.local_acp import LocalAcpBackend
 
 
 class _FakeAcpClient:
-    def __init__(self, events: list) -> None:
+    def __init__(
+        self,
+        events: list,
+        *,
+        new_session_id: str = "fake-session-id",
+    ) -> None:
         self._events = events
+        self._new_session_id = new_session_id
         self.prompts_received: list[tuple[str, list[dict]]] = []
         self.session_cwd: str | None = None
+        self.loaded_session_id: str | None = None
 
     async def initialize(self) -> dict:
         return {"agentInfo": {"name": "hermes-agent", "version": "fake"}}
 
     async def new_session(self, cwd: str = "/tmp") -> str:
         self.session_cwd = cwd
-        return "fake-session-id"
+        return self._new_session_id
+
+    async def load_session(self, session_id: str, cwd: str = "/tmp") -> str:
+        self.loaded_session_id = session_id
+        self.session_cwd = cwd
+        return session_id
 
     async def prompt(self, session_id: str, content_blocks: list[dict]):
         self.prompts_received.append((session_id, content_blocks))
@@ -63,7 +75,9 @@ async def test_local_acp_round_trips_query_with_streaming():
 
     events = [ev async for ev in backend.stream("ping", ctx)]
 
+    # Session event is emitted first (AC-W1-D4), then the streamed payload.
     assert events == [
+        ("session", "fake-session-id"),
         ("reasoning", "thinking"),
         ("text", "hello"),
         ("done", None),
@@ -179,3 +193,53 @@ async def test_local_acp_omits_image_block_when_no_attachments():
 
     blocks = factory.captured["client"].prompts_received[0][1]
     assert blocks == [{"type": "text", "text": "just text"}]
+
+
+# AC-W1-D4: session id emission + resume.
+
+async def test_local_acp_emits_session_event_at_start_of_stream():
+    factory = _make_factory([
+        ("reasoning", "thinking"),
+        ("text", "hi"),
+        ("done", None),
+    ])
+    backend = LocalAcpBackend(client_factory=factory)
+    ctx = TurnContext(user_id="x", user_name="X")
+
+    events = [ev async for ev in backend.stream("q", ctx)]
+
+    # First event is the session id, before any payload.
+    assert events[0] == ("session", "fake-session-id")
+    # Subsequent events preserved verbatim from the fake client.
+    assert events[1:] == [
+        ("reasoning", "thinking"),
+        ("text", "hi"),
+        ("done", None),
+    ]
+
+
+async def test_local_acp_calls_new_session_when_no_prior_id():
+    factory = _make_factory([("done", None)])
+    backend = LocalAcpBackend(client_factory=factory)
+    ctx = TurnContext(user_id="x", user_name="X")
+
+    async for _ in backend.stream("q", ctx):
+        pass
+
+    assert factory.captured["client"].loaded_session_id is None
+    assert factory.captured["client"].session_cwd == "/tmp"
+
+
+async def test_local_acp_calls_load_session_when_context_has_session_id():
+    factory = _make_factory([("done", None)])
+    backend = LocalAcpBackend(client_factory=factory)
+    ctx = TurnContext(user_id="x", user_name="X", session_id="prior-xyz")
+
+    events = []
+    async for ev in backend.stream("q", ctx):
+        events.append(ev)
+
+    fake = factory.captured["client"]
+    assert fake.loaded_session_id == "prior-xyz"
+    # Session event echoes the resumed id, not a new one.
+    assert events[0] == ("session", "prior-xyz")

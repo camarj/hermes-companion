@@ -21,11 +21,13 @@ One of:
   ("text", str)        — final-answer chunk; rendered as the assistant bubble.
   ("reasoning", str)   — chain-of-thought chunk; rendered as a thinking block.
   ("tool", dict)       — tool-call notification; rendered as a tool preview.
+  ("session", str)     — native session id from the agent; consumed by the
+                         facade for persistence + resume. Not forwarded to UI.
   ("done", None)       — terminator; signals the turn is complete.
 """
 
 
-_VALID_KINDS = frozenset({"text", "reasoning", "tool", "done"})
+_VALID_KINDS = frozenset({"text", "reasoning", "tool", "session", "done"})
 
 
 def is_agent_event(value: object) -> bool:
@@ -35,7 +37,7 @@ def is_agent_event(value: object) -> bool:
     kind, payload = value
     if kind not in _VALID_KINDS:
         return False
-    if kind in ("text", "reasoning"):
+    if kind in ("text", "reasoning", "session"):
         return isinstance(payload, str)
     if kind == "tool":
         return isinstance(payload, dict)
@@ -46,12 +48,19 @@ def is_agent_event(value: object) -> bool:
 
 @dataclass(frozen=True)
 class TurnContext:
-    """Carries who is asking. Propagated to the agent so it can scope work
-    to the requesting user (memory, integrations, permissions)."""
+    """Per-turn metadata propagated to the agent.
+
+    `session_id` is the agent's native session id (e.g. Hermes' ACP
+    `sessionId`) when resuming a prior conversation. None means "start a
+    fresh session". The facade fills this from
+    `conversations.hermes_session_id` so each backend can decide whether
+    to resume natively or replay context.
+    """
 
     user_id: str
     user_name: str = ""
     user_role: str = ""
+    session_id: str | None = None
 
 
 class AgentBackend(ABC):

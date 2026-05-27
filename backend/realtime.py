@@ -263,6 +263,7 @@ async def realtime_proxy(websocket: WebSocket, user_id: str = "", conversation_i
                         user_name=user_display_name,
                         user_id=user_id,
                         user_role=user_display_role,
+                        conversation_id=conversation_id,
                     )
                 except asyncio.CancelledError:
                     print("[realtime] call_agent cancelled")

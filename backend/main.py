@@ -306,6 +306,7 @@ async def api_chat(
             user_name=user["name"],
             user_id=user["id"],
             user_role=user.get("role", ""),
+            conversation_id=conversation_id,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -574,6 +575,7 @@ async def api_chat_stream(request: Request):
                 user_id=user["id"],
                 user_role=user.get("role", ""),
                 image_paths=image_paths,
+                conversation_id=conversation_id,
             ):
                 if kind == "reasoning":
                     reasoning_index += 1
