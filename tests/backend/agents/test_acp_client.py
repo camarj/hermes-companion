@@ -128,6 +128,35 @@ async def test_prompt_yields_reasoning_text_done_in_order():
     assert sent[0]["params"]["prompt"] == [{"type": "text", "text": "ping"}]
 
 
+async def test_load_session_resumes_an_existing_session():
+    """ACP session/load takes the prior sessionId and rehydrates it.
+
+    The response shape matches session/new (models + sessionId), with
+    the same id echoed back. Tests just confirm we send the right
+    method and parse the result.
+    """
+    reader = _make_reader([
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "sessionId": "prior-abc",
+                "models": {"availableModels": []},
+            },
+        },
+    ])
+    writer = _FakeWriter()
+    client = AcpClient(reader, writer)
+
+    session_id = await client.load_session("prior-abc", cwd="/tmp")
+
+    assert session_id == "prior-abc"
+    sent = _sent_messages(writer)
+    assert sent[0]["method"] == "session/load"
+    assert sent[0]["params"]["sessionId"] == "prior-abc"
+    assert sent[0]["params"]["cwd"] == "/tmp"
+
+
 async def test_prompt_ignores_known_noise_updates():
     reader = _make_reader([
         {

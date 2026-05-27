@@ -67,7 +67,16 @@ class LocalAcpBackend(AgentBackend):
         content_blocks = _build_prompt_blocks(query, image_paths)
         async with self._client_factory(env=env) as client:
             await client.initialize()
-            session_id = await client.new_session(cwd=self._cwd)
+            if context.session_id:
+                session_id = await client.load_session(
+                    context.session_id, cwd=self._cwd,
+                )
+            else:
+                session_id = await client.new_session(cwd=self._cwd)
+            # Surface the id so the facade can persist it on the
+            # conversation row (AC-W1-D4) — facade strips this event
+            # before forwarding to the SSE stream.
+            yield ("session", session_id)
             async for event in client.prompt(session_id, content_blocks):
                 yield event
 

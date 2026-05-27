@@ -34,7 +34,8 @@ Tests are written **before** the code that satisfies the AC. See `CLAUDE.md` →
 - **Maps to:** PRD §3.3, §3.4.
 - **Given** any subclass of `AgentBackend`,
 - **When** `stream` yields events during a turn,
-- **Then** every event matches `("text", str)`, `("reasoning", str)`, `("tool", dict)`, or `("done", None)`.
+- **Then** every event matches `("text", str)`, `("reasoning", str)`, `("tool", dict)`, `("session", str)`, or `("done", None)`.
+- **Note:** `("session", str)` was added in the AC-W1-D4 PR for native session-id propagation; consumed by the facade and stripped before reaching the SSE frontend stream.
 - **Test:** pytest unit — `tests/backend/agents/test_event_shape.py`.
 
 #### AC-W1-A3: Hermes banner regex parser is removed

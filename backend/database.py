@@ -310,6 +310,33 @@ def touch_conversation(conv_id: str):
         conn.close()
 
 
+def get_conversation_session_id(conv_id: str) -> Optional[str]:
+    """AC-W1-D4: return the agent's native session id for resume, or None."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT hermes_session_id FROM conversations WHERE id = ?",
+            (conv_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return row[0] if row else None
+
+
+def update_conversation_session_id(conv_id: str, session_id: str) -> bool:
+    """AC-W1-D4: persist the session id the agent reported on first turn."""
+    conn = get_db()
+    try:
+        cursor = conn.execute(
+            "UPDATE conversations SET hermes_session_id = ? WHERE id = ?",
+            (session_id, conv_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
 def delete_conversation(conv_id: str) -> bool:
     conn = get_db()
     try:

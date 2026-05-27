@@ -93,6 +93,29 @@ class AcpClient:
         )
         return result["sessionId"]
 
+    async def load_session(
+        self,
+        session_id: str,
+        cwd: str = "/tmp",
+        mcp_servers: list[dict] | None = None,
+    ) -> str:
+        """Resume a previously-created session by id.
+
+        Hermes replays the prior turn's notifications before sending the
+        response — we skip them via `_request`, since the facade has
+        already persisted the UI history. Returns the same `session_id`
+        as a sanity check.
+        """
+        result = await self._request(
+            "session/load",
+            {
+                "sessionId": session_id,
+                "cwd": cwd,
+                "mcpServers": mcp_servers or [],
+            },
+        )
+        return result.get("sessionId", session_id)
+
     async def prompt(
         self,
         session_id: str,

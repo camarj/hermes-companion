@@ -147,3 +147,131 @@ async def test_call_agent_returns_fallback_when_no_text_yielded(monkeypatch):
     )
 
     assert "no answer" in answer.lower()
+
+
+# AC-W1-D4: facade persists hermes_session_id and resumes on next call.
+
+async def test_call_agent_stream_strips_session_event(monkeypatch):
+    """The session event is plumbing — must never reach the SSE consumer."""
+    fake = _FakeBackend([
+        ("session", "abc-123"),
+        ("text", "hi"),
+        ("done", None),
+    ])
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
+
+    events = [
+        ev async for ev in agent_bridge.call_agent_stream(
+            "q", user_name="A", user_id="a", user_role="R"
+        )
+    ]
+
+    # No "session" in the stream — only what the UI consumes.
+    assert events == [("text", "hi")]
+
+
+async def test_call_agent_stream_persists_session_id_when_conversation_id_given(
+    monkeypatch
+):
+    fake = _FakeBackend([
+        ("session", "fresh-session"),
+        ("text", "ok"),
+        ("done", None),
+    ])
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
+
+    persisted: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        agent_bridge, "update_conversation_session_id",
+        lambda conv_id, sid: persisted.append((conv_id, sid)),
+    )
+    monkeypatch.setattr(
+        agent_bridge, "get_conversation_session_id",
+        lambda conv_id: None,
+    )
+
+    async for _ in agent_bridge.call_agent_stream(
+        "q", user_name="A", user_id="a", user_role="R",
+        conversation_id="conv-1",
+    ):
+        pass
+
+    assert persisted == [("conv-1", "fresh-session")]
+
+
+async def test_call_agent_stream_skips_persist_when_no_conversation_id(monkeypatch):
+    fake = _FakeBackend([
+        ("session", "x"), ("text", "ok"), ("done", None),
+    ])
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
+
+    called = []
+    monkeypatch.setattr(
+        agent_bridge, "update_conversation_session_id",
+        lambda *a, **k: called.append((a, k)),
+    )
+    monkeypatch.setattr(
+        agent_bridge, "get_conversation_session_id",
+        lambda *a, **k: None,
+    )
+
+    async for _ in agent_bridge.call_agent_stream(
+        "q", user_name="A", user_id="a", user_role="R"
+    ):
+        pass
+
+    assert called == []
+
+
+async def test_call_agent_stream_loads_existing_session_id_into_context(monkeypatch):
+    """When a conversation already has a stored session id, the facade
+    fills `TurnContext.session_id` so the backend resumes."""
+    fake = _FakeBackend([("session", "loaded"), ("text", "ok"), ("done", None)])
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
+    monkeypatch.setattr(
+        agent_bridge, "get_conversation_session_id",
+        lambda conv_id: "stored-session-xyz",
+    )
+    monkeypatch.setattr(
+        agent_bridge, "update_conversation_session_id",
+        lambda *a, **k: None,
+    )
+
+    async for _ in agent_bridge.call_agent_stream(
+        "q", user_name="A", user_id="a", user_role="R",
+        conversation_id="conv-1",
+    ):
+        pass
+
+    assert fake.captured is not None
+    _, ctx, _ = fake.captured
+    assert ctx.session_id == "stored-session-xyz"
+
+
+async def test_call_agent_stream_skips_persist_when_session_id_unchanged(monkeypatch):
+    """If the backend echoes the SAME session id we already have, no write."""
+    fake = _FakeBackend([("session", "same"), ("text", "ok"), ("done", None)])
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda: fake)
+    monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
+
+    writes = []
+    monkeypatch.setattr(
+        agent_bridge, "update_conversation_session_id",
+        lambda conv_id, sid: writes.append((conv_id, sid)),
+    )
+    monkeypatch.setattr(
+        agent_bridge, "get_conversation_session_id",
+        lambda conv_id: "same",
+    )
+
+    async for _ in agent_bridge.call_agent_stream(
+        "q", user_name="A", user_id="a", user_role="R",
+        conversation_id="conv-1",
+    ):
+        pass
+
+    assert writes == []
