@@ -5,8 +5,12 @@ Voice + chat shell on OpenAI Realtime with a pluggable external agent. FastAPI b
 ## Bash commands you'll need
 
 - **Setup a fresh clone:** `python3 -m venv venv && ./venv/bin/pip install -r backend/requirements.txt && cp config.yaml.example config.yaml && cp .env.example .env`
+- **Dev deps (tests):** `./venv/bin/pip install -r backend/requirements-dev.txt` and `pnpm --dir frontend install`
 - **Run the server:** `./start.sh` (port 8000; HTTPS if `./certs/*.crt`+`.key` are present)
-- **Smoke test:** `curl http://localhost:8000/api/health` → `{"status":"ok",...}`
+- **Health smoke:** `curl http://localhost:8000/api/health` → `{"status":"ok",...}`
+- **Backend tests:** `./venv/bin/pytest -q`
+- **Frontend tests:** `pnpm --dir frontend test --run`
+- **E2E tests:** `pnpm --dir frontend exec playwright install chromium` (first time) then `pnpm --dir frontend test:e2e`
 - **Optional vision:** `./install_face_recognition.sh` (5-10 min dlib compile)
 
 Voice / Realtime can't be unit-tested today — exercise it in a browser via the `/verify` skill and say so explicitly when you ship voice work. Everything else follows the SDD workflow below.
@@ -15,7 +19,7 @@ Voice / Realtime can't be unit-tested today — exercise it in a browser via the
 
 Specification-driven development. Every behavioural change starts as an acceptance criterion in [`docs/acceptance-criteria.md`](./docs/acceptance-criteria.md), and the test that exercises the criterion is written **before** the code that satisfies it (red → green → refactor).
 
-**Stack:** `pytest` + `pytest-asyncio` (backend), `Vitest` + Testing Library (frontend), `Playwright` (E2E). Voice / Realtime is the standing exception — manual `/verify` only. Test runners land in a follow-up PR; until then, smoke by hand and write the AC anyway.
+**Stack:** `pytest` + `pytest-asyncio` (backend, tests under `tests/backend/`), `Vitest` + Testing Library (frontend, co-located in `src/**/__tests__/`), `Playwright` (E2E, under `tests/e2e/`). Voice / Realtime is the standing exception — manual `/verify` only.
 
 **For Claude:** before editing a backend module or React component, open `docs/acceptance-criteria.md` and find the AC you're working under. If none exists, write one in the same branch first and confirm with the user before coding.
 

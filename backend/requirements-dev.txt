@@ -1,0 +1,5 @@
+# Dev-only deps. Install with: ./venv/bin/pip install -r backend/requirements-dev.txt
+# Production install (start.sh) does not pull these.
+
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
