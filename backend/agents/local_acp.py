@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import base64
 import mimetypes
+import tempfile
 from pathlib import Path
-from typing import AsyncContextManager, AsyncIterator, Callable
+from typing import AsyncContextManager, AsyncIterator, Callable, Optional
 
 from acp_client import AcpClient, spawn_hermes_acp
 
@@ -51,10 +52,25 @@ class LocalAcpBackend(AgentBackend):
         *,
         cwd: str = "/tmp",
         client_factory: AcpClientFactory | None = None,
+        system_prompt_override: Optional[str] = None,
     ) -> None:
         self._cwd = cwd
+        self._system_prompt = system_prompt_override
         # Default to the real spawn; tests pass an asynccontextmanager fake.
         self._client_factory: AcpClientFactory = client_factory or spawn_hermes_acp
+
+    def _resolve_session_cwd(self) -> str:
+        """Materialize AGENTS.md in a fresh tmpdir when an override is set
+        (AC-W1-U5). Hermes reads AGENTS.md from the session cwd as part of
+        its prompt builder — that's the only knob it respects for an
+        external system prompt. Otherwise use the configured cwd."""
+        if not self._system_prompt or not self._system_prompt.strip():
+            return self._cwd
+        session_dir = Path(tempfile.mkdtemp(prefix="hermes-companion-local-"))
+        (session_dir / "AGENTS.md").write_text(
+            self._system_prompt, encoding="utf-8",
+        )
+        return str(session_dir)
 
     async def stream(
         self,
@@ -65,14 +81,15 @@ class LocalAcpBackend(AgentBackend):
     ) -> AsyncIterator[AgentEvent]:
         env = _build_env(context)
         content_blocks = _build_prompt_blocks(query, image_paths)
+        cwd = self._resolve_session_cwd()
         async with self._client_factory(env=env) as client:
             await client.initialize()
             if context.session_id:
                 session_id = await client.load_session(
-                    context.session_id, cwd=self._cwd,
+                    context.session_id, cwd=cwd,
                 )
             else:
-                session_id = await client.new_session(cwd=self._cwd)
+                session_id = await client.new_session(cwd=cwd)
             # Surface the id so the facade can persist it on the
             # conversation row (AC-W1-D4) — facade strips this event
             # before forwarding to the SSE stream.

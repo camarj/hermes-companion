@@ -70,6 +70,23 @@ def test_resolve_backend_local_transport_returns_local(monkeypatch):
     )
     backend = agent_bridge._resolve_backend("c")
     assert isinstance(backend, LocalAcpBackend)
+    assert backend._system_prompt is None
+
+
+def test_resolve_backend_local_passes_system_prompt_override(monkeypatch):
+    _patch_lookups(
+        monkeypatch,
+        conv={"id": "c", "agent_id": "local-default"},
+        agent={
+            "id": "local-default",
+            "transport": "local-acp",
+            "transport_config": {},
+            "system_prompt_override": "Be terse.",
+        },
+    )
+    backend = agent_bridge._resolve_backend("c")
+    assert isinstance(backend, LocalAcpBackend)
+    assert backend._system_prompt == "Be terse."
 
 
 def test_resolve_backend_remote_transport_returns_remote(monkeypatch):

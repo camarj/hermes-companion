@@ -243,3 +243,56 @@ async def test_local_acp_calls_load_session_when_context_has_session_id():
     assert fake.loaded_session_id == "prior-xyz"
     # Session event echoes the resumed id, not a new one.
     assert events[0] == ("session", "prior-xyz")
+
+
+# AC-W1-U5: LocalAcpBackend honors system_prompt_override.
+
+async def test_local_acp_materializes_agents_md_when_system_prompt_set():
+    """With a system_prompt_override, the cwd passed to session/new must
+    contain an AGENTS.md file with that content (Hermes' prompt builder
+    picks it up natively)."""
+    factory = _make_factory([("done", None)])
+    prompt = "You are terse. Reply in one sentence."
+    backend = LocalAcpBackend(
+        client_factory=factory,
+        system_prompt_override=prompt,
+    )
+    ctx = TurnContext(user_id="x", user_name="X")
+
+    async for _ in backend.stream("q", ctx):
+        pass
+
+    cwd = factory.captured["client"].session_cwd
+    assert cwd is not None
+    assert cwd != "/tmp"
+
+    agents_md = Path(cwd) / "AGENTS.md"
+    assert agents_md.is_file()
+    assert agents_md.read_text(encoding="utf-8") == prompt
+
+
+async def test_local_acp_uses_configured_cwd_when_no_system_prompt():
+    """Without an override, cwd stays as whatever was configured."""
+    factory = _make_factory([("done", None)])
+    backend = LocalAcpBackend(cwd="/custom", client_factory=factory)
+    ctx = TurnContext(user_id="x", user_name="X")
+
+    async for _ in backend.stream("q", ctx):
+        pass
+
+    assert factory.captured["client"].session_cwd == "/custom"
+
+
+async def test_local_acp_empty_override_does_not_materialize_dir():
+    """Empty string / whitespace shouldn't create a tmpdir."""
+    factory = _make_factory([("done", None)])
+    backend = LocalAcpBackend(
+        client_factory=factory,
+        system_prompt_override="   ",
+    )
+    ctx = TurnContext(user_id="x", user_name="X")
+
+    async for _ in backend.stream("q", ctx):
+        pass
+
+    assert factory.captured["client"].session_cwd == "/tmp"

@@ -79,6 +79,23 @@ export const api = {
   listAgents: () =>
     request<{ agents: AgentInstance[] }>("/api/agents").then((r) => r.agents),
 
+  // ── Per-agent inspection (AC-W1-U4 frontend) ────────────────────────────
+
+  getAgentInspection: (agentId: string, kind: "skills" | "mcp" | "tools" | "config") =>
+    request<{ stdout: string; stderr: string; exit_code: number }>(
+      `/api/agents/${encodeURIComponent(agentId)}/${kind}`,
+    ),
+
+  setAgentSystemPrompt: (agentId: string, prompt: string) =>
+    request<AgentInstance>(
+      `/api/agents/${encodeURIComponent(agentId)}/system-prompt`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ system_prompt: prompt }),
+        headers: { "Content-Type": "application/json" },
+      },
+    ),
+
   getConversation: (id: string) =>
     request<{ conversation: Conversation; messages: Message[] }>(
       `/api/conversations/${encodeURIComponent(id)}`,

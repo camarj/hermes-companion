@@ -67,7 +67,9 @@ def _resolve_backend(conversation_id: Optional[str]) -> AgentBackend:
             token=_resolve_token(cfg.get("token", "")),
             system_prompt_override=agent.get("system_prompt_override"),
         )
-    return LocalAcpBackend()
+    return LocalAcpBackend(
+        system_prompt_override=agent.get("system_prompt_override"),
+    )
 
 
 _DISABLED_MESSAGE = (
