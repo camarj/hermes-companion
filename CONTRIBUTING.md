@@ -59,8 +59,7 @@ with approval prompts.
   `requirements.txt` lean so `pip install` stays fast).
 - TS/React: the React app lives in `frontend/src/` (Vite + React 19 +
   Tailwind v4). The build output goes to `frontend/static/next/` and is
-  served at `/`. The legacy single-file vanilla JS app at
-  `frontend/legacy/index.html` is reachable at `/legacy` for one release.
+  served at `/`.
 - Don't add features behind feature flags — either it's in or it isn't.
 
 ## Scope

@@ -54,7 +54,6 @@ app.add_middleware(
 
 frontend_path = Path(__file__).parent.parent / "frontend" / "static"
 react_build_path = frontend_path / "next"
-legacy_path = Path(__file__).parent.parent / "frontend" / "legacy"
 
 
 def get_current_user(request: Request) -> Optional[dict]:
@@ -406,20 +405,6 @@ async def root():
         "<p>Run <code>cd frontend && npm run build</code> "
         "(or restart with <code>./start.sh</code>).</p>"
     )
-
-
-@app.get("/legacy")
-async def legacy():
-    """Serve the original single-file vanilla JS frontend.
-
-    Kept reachable for one release after the React switchover so anyone with
-    the old URL bookmarked can still get to it. Scheduled to be removed in the
-    final migration PR.
-    """
-    index_path = legacy_path / "index.html"
-    if index_path.exists():
-        return FileResponse(str(index_path))
-    raise HTTPException(status_code=404, detail="Legacy frontend not found")
 
 
 @app.get("/api/health")

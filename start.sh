@@ -29,9 +29,7 @@ fi
 # ── Auto-build the React frontend if missing ────────────────────────────────
 # The React app lives at frontend/static/next/ and is served at /. If you've
 # already run `pnpm run build` the artifacts are there and we skip; otherwise
-# we build now so the assistant works after a fresh clone. The legacy
-# vanilla-JS frontend at frontend/legacy/index.html is served at /legacy
-# during the migration and gets removed in a later PR.
+# we build now so the assistant works after a fresh clone.
 FRONTEND_DIR="$SCRIPT_DIR/frontend"
 NEXT_BUILD="$FRONTEND_DIR/static/next/index.html"
 if [ ! -f "$NEXT_BUILD" ] && [ -f "$FRONTEND_DIR/package.json" ]; then

@@ -1,6 +1,6 @@
 # hermes-companion
 
-Voice + chat shell on OpenAI Realtime with a pluggable external agent. FastAPI backend, SQLite, Vite + React + Tailwind v4 frontend (built to `frontend/static/next/`). The legacy single-file vanilla JS frontend is reachable at `/legacy` until the final migration PR.
+Voice + chat shell on OpenAI Realtime with a pluggable external agent. FastAPI backend, SQLite, Vite + React + Tailwind v4 frontend (built to `frontend/static/next/`, served at `/`).
 
 ## Bash commands you'll need
 
