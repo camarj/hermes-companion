@@ -24,6 +24,9 @@ from database import (
     create_conversation, get_conversation, list_conversations,
     update_conversation_title, touch_conversation, delete_conversation,
     add_message, get_messages,
+    list_agent_instances, get_agent_instance,
+    create_agent_instance, update_agent_instance, delete_agent_instance,
+    count_conversations_for_agent,
 )
 from agent_bridge import call_agent, call_agent_stream
 
@@ -137,7 +140,15 @@ async def api_create_conversation(request: Request):
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return create_conversation(user["id"])
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    agent_id = body.get("agent_id") if isinstance(body, dict) else None
+    try:
+        return create_conversation(user["id"], agent_id=agent_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 def _require_conversation_access(user: dict, conv_id: str) -> dict:
@@ -182,6 +193,88 @@ async def api_delete_conversation(conv_id: str, request: Request):
         raise HTTPException(status_code=401, detail="Not authenticated")
     _require_conversation_access(user, conv_id)
     delete_conversation(conv_id)
+    return {"success": True}
+
+
+# ---------------------------------------------------------------------------
+# Agents registry (Wave 1, Fase 2)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/agents")
+async def api_list_agents(request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"agents": list_agent_instances()}
+
+
+@app.post("/api/agents", status_code=201)
+async def api_create_agent(request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="JSON object required")
+
+    agent_id = body.get("id")
+    label = body.get("label")
+    if not isinstance(agent_id, str) or not agent_id.strip():
+        raise HTTPException(status_code=422, detail="`id` is required")
+    if not isinstance(label, str) or not label.strip():
+        raise HTTPException(status_code=422, detail="`label` is required")
+
+    if get_agent_instance(agent_id):
+        raise HTTPException(status_code=409, detail=f"agent_id {agent_id!r} already exists")
+
+    return create_agent_instance(
+        id=agent_id,
+        label=label,
+        type=body.get("type", "hermes"),
+        transport=body.get("transport", "local-acp"),
+        transport_config=body.get("transport_config") or {},
+        system_prompt_override=body.get("system_prompt_override"),
+        enabled=bool(body.get("enabled", True)),
+        created_via="user",
+    )
+
+
+@app.put("/api/agents/{agent_id}")
+async def api_update_agent(agent_id: str, request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="JSON object required")
+
+    updated = update_agent_instance(
+        agent_id,
+        label=body.get("label"),
+        transport_config=body.get("transport_config"),
+        system_prompt_override=body.get("system_prompt_override"),
+        enabled=body.get("enabled"),
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"agent_id {agent_id!r} not found")
+    return updated
+
+
+@app.delete("/api/agents/{agent_id}", status_code=204)
+async def api_delete_agent(agent_id: str, request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not get_agent_instance(agent_id):
+        raise HTTPException(status_code=404, detail=f"agent_id {agent_id!r} not found")
+    if count_conversations_for_agent(agent_id) > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"agent_id {agent_id!r} has conversations; reassign or delete them first",
+        )
+    delete_agent_instance(agent_id)
+    return Response(status_code=204)
     return {"success": True}
 
 

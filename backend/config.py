@@ -107,6 +107,55 @@ def agent_description() -> str:
     return str(agent_config().get("description") or "")
 
 
+# ── Agents registry (Wave 1, Fase 2) ────────────────────────────────────────
+
+def agents() -> list[dict[str, Any]]:
+    """Return the polymorphic agent-instance registry from `config.yaml`.
+
+    Reads `agents: [...]` if present (new format). Otherwise auto-migrates
+    the legacy `agent: {...}` block to a single entry with `id="local-default"`.
+    Each entry is normalised to the shape persisted in the DB (see
+    `agent_instances` table in `database.py`).
+    """
+    modern = CONFIG.get("agents")
+    if isinstance(modern, list) and modern:
+        return [_normalise_agent_entry(e) for e in modern if isinstance(e, dict)]
+
+    legacy = CONFIG.get("agent")
+    if isinstance(legacy, dict) and legacy:
+        label = str(legacy.get("label") or "Hermes")
+        return [
+            _normalise_agent_entry({
+                "id": "local-default",
+                "label": label,
+                "type": "hermes",
+                "transport": "local-acp",
+                "transport_config": {},
+                "system_prompt_override": None,
+                "enabled": True,
+            })
+        ]
+
+    return []
+
+
+def _normalise_agent_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Fill in defaults for optional fields."""
+    return {
+        "id": str(entry.get("id") or "").strip(),
+        "label": str(entry.get("label") or entry.get("id") or "Agent").strip(),
+        "type": str(entry.get("type") or "hermes"),
+        "transport": str(entry.get("transport") or "local-acp"),
+        "transport_config": entry.get("transport_config") or {
+            k: v for k, v in entry.items()
+            if k in ("url", "token")
+        },
+        "system_prompt_override": entry.get("system_prompt_override"),
+        "enabled": bool(entry.get("enabled", True)),
+        "created_via": "config",
+    }
+
+
 def team() -> list[dict[str, Any]]:
     raw = CONFIG.get("team") or []
     out: list[dict[str, Any]] = []
