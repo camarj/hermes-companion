@@ -37,39 +37,51 @@ team:
     shared_space: true
 
 # ─────────────────────────────────────────────────────────────────────────────
-# External agent (the thing that handles "live data" tool calls)
+# Agents (the things that handle "live data" tool calls)
 #
 # When the model decides a question needs real data — past conversations,
 # calendar, email, web search, automations — it invokes the `call_agent` tool.
-# The server runs the command below as a subprocess and pipes the user's
-# query as the first argument. The agent should print its answer to stdout.
+# The backend routes the turn to the conversation's bound agent instance over
+# ACP (Agent Client Protocol). Each instance is declared below; its `transport`
+# selects the backend:
+#   local-acp  → spawns `hermes acp` as a local subprocess
+#   remote-acp → connects to a remote host-mode box over a WebSocket bridge
 #
-# Default points to `hermes -z` (https://github.com/.../hermes-agent), but you
-# can plug any CLI you like: a python script, another agent framework, an
-# HTTP client, etc. The placeholders {query} and {user_id} are substituted
-# at runtime.
+# Identity is passed to the agent via AGENT_REQUESTER_ID / _NAME / _ROLE (local)
+# or X-Requester-* headers (remote). The first enabled agent is the default for
+# new conversations; the UI can bind a conversation to any other.
+# ─────────────────────────────────────────────────────────────────────────────
+agents:
+  - id: local-default
+    label: "Hermes (local)"        # shown in the UI ("Querying Hermes…")
+    type: hermes
+    transport: local-acp           # runs `hermes acp` from PATH
+    # system_prompt_override: |     # optional — materialized as AGENTS.md for the turn
+    #   You are ...
+
+  # A remote Hermes served by another box in host mode (see host_tokens below).
+  # - id: vps-prod
+  #   label: "Hermes VPS"
+  #   type: hermes
+  #   transport: remote-acp
+  #   transport_config:
+  #     url: "wss://my-host.example.com/api/host/acp"
+  #     token: "env:VPS_HOST_TOKEN"   # literal, or env:VAR_NAME reference
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Agent label + capability description.
 #
-# Env vars also passed to the subprocess:
-#   AGENT_REQUESTER_ID, AGENT_REQUESTER_NAME, AGENT_REQUESTER_ROLE
+# These feed the system prompt's routing block (when to use `call_agent`), so
+# keep them even with the `agents:` list above. `description` should tell the
+# model what the agent can do.
+#
+# Back-compat: if `agents:` is omitted entirely, this block is also
+# auto-migrated to a single `local-default` instance (transport: local-acp).
+# Any legacy `command:` / `timeout_seconds:` keys here are ignored —
+# execution is always `hermes acp`.
 # ─────────────────────────────────────────────────────────────────────────────
 agent:
-  # The label shown in the UI when a tool call is in flight ("Querying Hermes…").
   label: "Hermes"
-
-  # If empty/null, the call_agent tool is disabled and the assistant runs in
-  # voice-only mode. Otherwise this is the argv list of the subprocess.
-  # The literal string "{query}" is replaced with the user's question.
-  command:
-    - hermes
-    - chat
-    - -q
-    - "{query}"
-    - --yolo
-
-  timeout_seconds: 180
-
-  # Optional: short description of what the agent can do — appended to the
-  # system prompt so the model knows when to invoke it.
   description: >
     Hermes has access to live integrations (calendar, email, files, web search,
     scheduled tasks, persistent memory of past conversations). Use it whenever

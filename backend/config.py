@@ -97,15 +97,6 @@ def agent_label() -> str:
     return str(agent_config().get("label") or "Agent")
 
 
-def agent_command() -> list[str]:
-    cmd = agent_config().get("command") or []
-    return [str(x) for x in cmd]
-
-
-def agent_timeout() -> float:
-    return float(agent_config().get("timeout_seconds") or 180)
-
-
 def agent_description() -> str:
     return str(agent_config().get("description") or "")
 
