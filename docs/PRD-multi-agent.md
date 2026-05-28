@@ -223,7 +223,7 @@ A single user, on a single browser, can:
 |---|---|---|
 | 1 | Agent registry lives in `config.yaml` (declarative default) **and** in SQLite (UI-created instances). | Lowest friction for open-source users (declare in yaml, deploy). UI CRUD is additive. |
 | 2 | Remote transport is ACP-over-WebSocket through a `hermes-companion` host instance, authenticated by per-token bearer. | Avoids depending on ACP-over-WS support inside Hermes (still WIP); we control framing and auth. |
-| 3 | Voice routes to the instance bound to the active conversation, including for vision (frames are uploaded to the host sidecar before being passed to the remote agent). | Avoids "voice goes to a different agent than chat" surprises. |
+| 3 | Voice/vision routes to the instance bound to the active conversation. The OpenAI Realtime model answers trivial requests it can satisfy from the system prompt (greetings, small talk) and interprets vision frames itself; complex requests and tool calls are sent to the agent. Vision frames are **not** re-uploaded to the agent in voice — raw images reach a remote agent only via chat attachments (`POST /api/host/upload`). | Avoids "voice goes to a different agent than chat" surprises, and avoids double-processing the frame — the Realtime model is already multimodal, so the agent is invoked only when the request truly needs it. |
 | 4 | UI is sidebar-grouped with one active conversation at a time (no tabs). | Preserves the current mental model. Tabs/split-view belong to Wave 3 (orchestration). |
 | 5 | Native config management is read-only for skills/tools/MCP, editable for system prompt only. | Hermes exposes no HTTP config API today; we wrap its CLI. Read-only first keeps the surface small and trustworthy. |
 

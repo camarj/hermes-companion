@@ -223,13 +223,33 @@ Tests are written **before** the code that satisfies the AC. See `CLAUDE.md` →
 - **And** the spoken response reflects data from the remote agent.
 - **Test:** manual `/verify`.
 
-#### AC-W1-V2: Voice + vision in remote conversation uploads frame correctly
+#### AC-W1-V1a: Voice connects on the active conversation, not a fresh local one
 
-- **Maps to:** PRD §4.1 item 5.
-- **Given** a remote-bound voice session,
-- **When** the user enters vision and a frame is captured,
-- **Then** host logs show `POST /api/host/upload` followed by an ACP turn referencing that handle.
-- **Test:** manual `/verify`.
+- **Maps to:** PRD §4.3 (decision 3); regression found during V1 manual smoke.
+- **Given** an active conversation bound to a non-default agent,
+- **When** voice connects,
+- **Then** it reuses that conversation's id (so the turn routes to its bound
+  agent); and when there is no active conversation it creates one bound to the
+  currently selected agent — never silently defaulting to `local-default`.
+- **Test:** Vitest — `frontend/src/hooks/__tests__/resolveVoiceConversationId.test.ts`.
+
+#### AC-W1-V2: An image sent to a remote conversation uploads to the host
+
+- **Maps to:** PRD §4.1 item 5, §4.4 (remote-vision risk).
+- **Given** a chat conversation bound to a remote instance,
+- **When** the user attaches an image and sends the turn,
+- **Then** host logs show `POST /api/host/upload` followed by an ACP turn
+  referencing the returned handle.
+- **Test:** manual `/verify`; the upload + content-block mechanism is also
+  covered by the `RemoteAcpBackend` image-upload unit test.
+- **Design note (revised after the Fase 6 smoke):** voice + vision frames are
+  injected into the **OpenAI Realtime** model and are **not** forwarded to the
+  agent. The voice `call_agent` path (`call_agent_for_voice`) carries no image —
+  by design: OpenAI's model is already multimodal and sees the frame, so
+  re-uploading it to the agent would double-process and add latency. Raw images
+  reach a remote agent only through **chat attachments** (which is what this
+  criterion now verifies). The original wording assumed voice+vision uploaded to
+  the host; the code routes voice vision through OpenAI instead.
 
 ### Back-compat
 

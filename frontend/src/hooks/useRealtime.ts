@@ -14,9 +14,27 @@ type ToolThinking = {
 
 type Options = {
   user: User
+  activeConversationId?: string | null
+  activeAgentId?: string | null
   onError?: (msg: string) => void
   onConversationCreated?: (id: string) => void
   onNewFacesGreeting?: () => void
+}
+
+/**
+ * Decide which conversation a voice session should run on. Reusing the active
+ * conversation is what makes the turn route to its bound agent; creating a
+ * fresh one without an agent silently defaults to `local-default`, which is
+ * the bug AC-W1-V1a guards against.
+ */
+export async function resolveVoiceConversationId(opts: {
+  activeConversationId?: string | null
+  activeAgentId?: string | null
+  createConversation: (agentId?: string) => Promise<{ id: string }>
+}): Promise<string> {
+  if (opts.activeConversationId) return opts.activeConversationId
+  const conv = await opts.createConversation(opts.activeAgentId ?? undefined)
+  return conv.id
 }
 
 // Server emits errors we treat as benign — handled internally by OpenAI and
@@ -33,6 +51,8 @@ function makeId(prefix: string): string {
 
 export function useRealtime({
   user,
+  activeConversationId,
+  activeAgentId,
   onError,
   onConversationCreated,
   onNewFacesGreeting,
@@ -358,11 +378,15 @@ export function useRealtime({
     if (wsRef.current) return true
     setConnecting(true)
 
-    // Create a conversation so transcripts persist server-side.
+    // Reuse the active conversation (so voice talks to its bound agent),
+    // otherwise create one bound to the selected agent.
     let convId = ""
     try {
-      const conv = await api.createConversation()
-      convId = conv.id
+      convId = await resolveVoiceConversationId({
+        activeConversationId,
+        activeAgentId,
+        createConversation: api.createConversation,
+      })
     } catch (e) {
       console.warn("[realtime] could not create conversation, continuing:", e)
     }
@@ -456,7 +480,7 @@ export function useRealtime({
         onError?.("Realtime connection error")
       }
     })
-  }, [camera, echo, handleEvent, mic, onError, playback_, user.id])
+  }, [activeConversationId, activeAgentId, camera, echo, handleEvent, mic, onError, playback_, user.id])
 
   // ── mode transitions ───────────────────────────────────────────────────
 

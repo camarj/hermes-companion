@@ -91,8 +91,11 @@ export function AppShell({
     [activeId, refresh],
   )
 
+  const activeConversation = conversations.find((c) => c.id === activeId) ?? null
   const realtime = useRealtime({
     user,
+    activeConversationId: activeId,
+    activeAgentId: activeConversation?.agent_id ?? null,
     onError: (msg) => toast.error(msg),
     onConversationCreated: (id) => {
       setActiveId(id)
