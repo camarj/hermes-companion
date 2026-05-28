@@ -6,10 +6,10 @@ the Fase 1 ACP migration so the call sites do not change. Internally the
 facade builds a `TurnContext` from the loose kwargs and delegates to the
 backend returned by `_resolve_backend()`.
 
-Wave 2 will extend `_resolve_backend` to look up the conversation's
-`agent_id` and instantiate the matching backend type. For Wave 1 it
-always returns a `LocalAcpBackend` — every chat goes to the local
-`hermes acp` subprocess via the standardised protocol.
+`_resolve_backend` looks up the conversation's `agent_id` and instantiates
+the backend matching that instance's `transport` (`local-acp` →
+`LocalAcpBackend`, `remote-acp` → `RemoteAcpBackend`). Conversations with a
+NULL `agent_id` fall back to a local `hermes acp` subprocess (AC-W1-B1).
 """
 
 from __future__ import annotations

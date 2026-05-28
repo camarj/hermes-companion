@@ -1,95 +1,194 @@
 ---
 name: add-agent-backend
-description: Wire up a custom external agent (not Hermes) so call_agent routes live-data requests to it. Use when the user wants to plug their own CLI, script, or service into the assistant.
+description: Wire up an external agent so conversations route to it instead of the default local Hermes. Use when the user wants to plug in their own Hermes instance (local or remote VPS) or implement a brand-new backend type.
 disable-model-invocation: true
 ---
 
-# Adding a custom agent backend
+# Adding an agent backend
 
-The Realtime model has one tool, `call_agent`. When it decides a question needs live data or real-world action, the backend runs whatever subprocess is configured under `agent.command` in `config.yaml` and pipes the stdout back as the answer.
+Hermes-companion is a polymorphic multi-agent shell. Every chat/voice turn is
+served by an `AgentBackend` — the single seam in `backend/agents/base.py`. Two
+concrete backends ship today, both speaking ACP (Agent Client Protocol) to a
+Hermes process:
 
-## Interview the user
+- **`LocalAcpBackend`** — spawns `hermes acp` as a local subprocess.
+- **`RemoteAcpBackend`** — talks to another hermes-companion running in host
+  mode over a WebSocket bridge.
 
-Before editing anything, ask them:
+A conversation is bound to an *agent instance*. The instance's `transport`
+field decides which backend serves it. `_resolve_backend()` in
+`backend/agent_bridge.py` is the dispatcher. Conversations with no agent bound
+(NULL `agent_id`) fall back to a local Hermes — that's the legacy single-agent
+behaviour (AC-W1-B1).
 
-1. **What's the agent's entry command?** Examples: `my-agent`, `python /path/to/agent.py`, `./bin/run`, `node ./dist/agent.js`.
-2. **How does it accept the query?** Positional argv (preferred), flag like `--query "..."`, stdin (not great — there's no TTY), or HTTP (in which case wrap it in a tiny shell script).
-3. **Does it print plain text to stdout?** If it writes to a file or returns structured JSON, we'll need a wrapper.
-4. **Auth?** If the agent needs API keys or a token, are those already in the user's environment or do they need to go in `.env`?
-5. **Latency?** Typical response time. The default timeout is 180s.
+> The old `agent.command` subprocess contract is gone. If you point an entry at
+> an arbitrary CLI expecting stdout to be piped back, it will be **silently
+> ignored** — execution is always `hermes acp` over ACP unless you write a new
+> backend (Scenario B below).
 
-## Edit `config.yaml`
+## First: which scenario?
+
+1. **Adding another Hermes instance** (local or a remote VPS) → config only,
+   no Python. Go to Scenario A.
+2. **Adding a genuinely different agent** (an OpenAI Agents SDK app, a CrewAI
+   flow, a custom service that does NOT speak ACP) → you must implement an
+   `AgentBackend` subclass. Go to Scenario B.
+
+Ask the user which one they want before editing anything.
+
+---
+
+## Scenario A — register another Hermes instance (config only)
+
+Add an entry to the `agents:` list in `config.yaml`. Schema:
+
+| field | required | meaning |
+|---|---|---|
+| `id` | yes | Stable unique id; becomes the PK in `agent_instances` and is referenced by conversations |
+| `label` | no (defaults to `id`) | Display name in the UI |
+| `type` | no (defaults to `hermes`) | Agent-type taxonomy; not used for dispatch yet |
+| `transport` | no (defaults to `local-acp`) | `local-acp` or `remote-acp` — this is what picks the backend |
+| `transport_config` | no (defaults to `{}`) | Transport params; for remote: `url` + `token` |
+| `system_prompt_override` | no | Custom system prompt (see note below) |
+| `enabled` | no (defaults to `true`) | `false` seeds the instance but keeps it unusable |
+
+### Local instance
 
 ```yaml
-agent:
-  label: "MyAgent"                # shown in UI ("Querying MyAgent…")
-  command:
-    - my-agent
-    - --query
-    - "{query}"
-  timeout_seconds: 180
-  description: >
-    One or two sentences telling the model what this agent can do. Goes into
-    the system prompt so the model knows when to route to it.
+agents:
+  - id: local-default
+    label: "Hermes (local)"
+    transport: local-acp
 ```
 
-`{query}` is substituted at runtime with the user's question. `{user_id}` is also substituted if you need it. Identity also flows via env: `AGENT_REQUESTER_ID`, `AGENT_REQUESTER_NAME`, `AGENT_REQUESTER_ROLE`.
+`transport_config` is empty for local — it always runs `hermes acp` from PATH.
 
-## Test the subprocess directly first
+### Remote instance (a VPS in host mode)
 
-Before bouncing the server, prove the command works in isolation:
-
-```bash
-AGENT_REQUESTER_ID=alice \
-AGENT_REQUESTER_NAME=Alice \
-my-agent --query "what's the time?"
+```yaml
+agents:
+  - id: vps-prod
+    label: "Hermes VPS"
+    transport: remote-acp
+    transport_config:
+      url: "wss://my-host.example.com/api/host/acp"
+      token: "env:VPS_HOST_TOKEN"
 ```
 
-Confirm:
-- It prints a plain-text answer to stdout
-- It exits 0 (or at least prints something even if it exits non-zero — `agent_bridge.py` tolerates that as long as stdout is non-empty)
-- It does NOT read from stdin (there's no TTY in subprocess mode)
+- `token` accepts a literal or an `env:VAR_NAME` reference (resolved at runtime
+  by `_resolve_token()`). Prefer `env:` so secrets stay out of `config.yaml`.
+- The remote box must run hermes-companion with `HERMES_COMPANION_MODE=host`
+  and list the matching token under `host_tokens:`. See the README →
+  "Deploy a remote Hermes".
+- Shorthand: top-level `url:` / `token:` keys on the entry are auto-promoted
+  into `transport_config` if you omit it.
 
-## Restart and verify
+### System prompt override
+
+`system_prompt_override` is honored by both backends, but Hermes has no
+system-prompt flag — the override is materialized as an `AGENTS.md` file in the
+session cwd (locally) or POSTed to `/api/host/config/system-prompt` (remotely).
+
+### Apply
+
+The DB seeds new entries on startup (`database._seed_agent_instances()`), keyed
+by `id`. Restart the server, then in the UI create or switch a conversation to
+the new agent. The first enabled agent is the default for new conversations.
 
 ```bash
 ./start.sh
 ```
 
-Trigger a query that should route to the agent (e.g., "what's on my calendar today?") and watch `/tmp/companion.log` for `[realtime/agent]` lines confirming the spawn + answer.
+Confirm in `/tmp/companion.log`: a local turn shows the `hermes acp` spawn; a
+remote turn shows the outbound WS connection to your host URL.
 
-If the model never invokes the tool, make `agent.description` more specific. The model uses that text to decide when the tool is relevant.
+---
+
+## Scenario B — implement a new backend type
+
+There is no plugin registry yet — adding a non-ACP agent means three edits.
+
+### 1. Subclass `AgentBackend`
+
+In a new file under `backend/agents/`, implement the one abstract method:
+
+```python
+from agents.base import AgentBackend, AgentEvent, TurnContext
+
+class MyBackend(AgentBackend):
+    async def stream(
+        self,
+        query: str,
+        context: TurnContext,
+        *,
+        image_paths: list[str] | None = None,
+    ) -> AsyncIterator[AgentEvent]:
+        ...
+```
+
+Yield `AgentEvent` tuples and ALWAYS terminate with `("done", None)`, even on
+failure. The five valid shapes:
+
+| event | payload | rendered as |
+|---|---|---|
+| `("text", str)` | answer chunk | assistant bubble |
+| `("reasoning", str)` | thinking chunk | reasoning block |
+| `("tool", dict)` | tool-call notice | tool preview |
+| `("session", str)` | the agent's native session id | consumed for resume, not shown |
+| `("done", None)` | terminator | — |
+
+`TurnContext` carries `user_id`, `user_name`, `user_role`, `session_id` — use
+them for identity propagation.
+
+### 2. Add a `transport` constant
+
+Pick a new string, e.g. `"openai-agents"`.
+
+### 3. Extend the dispatcher
+
+In `backend/agent_bridge.py`, add a branch to `_resolve_backend()`:
+
+```python
+if transport == "openai-agents":
+    cfg = agent.get("transport_config") or {}
+    return MyBackend(**cfg)
+```
+
+### 4. Register it in `config.yaml`
+
+```yaml
+agents:
+  - id: my-agent
+    label: "My Agent"
+    transport: openai-agents
+    transport_config: { ... }
+```
+
+### Test it (TDD)
+
+Per the SDD workflow, write the test first. Backends are tested with injected
+fakes — see `tests/backend/agents/` for the `LocalAcpBackend` /
+`RemoteAcpBackend` patterns (spawn paths use `client_factory` / `_spawn_acp`
+indirection so no real subprocess or socket is needed). Assert your `stream()`
+emits the right `AgentEvent` sequence and always closes with `("done", None)`.
+
+---
 
 ## Common pitfalls
 
-- **Subprocess hangs forever.** Usually it's reading stdin. Make sure the agent doesn't block on input.
-- **Output is too verbose for voice.** The voice variant flattens bullets/headings into a single line, but markdown tables and code fences still sound awkward. Have the agent respond conversationally.
-- **Permission errors.** The subprocess inherits the parent process's env and cwd. Check file/network permissions when running it directly first.
-- **Long-running agents.** Bump `timeout_seconds`. Also be aware: while the tool runs, the assistant's voice is silent (the model said its filler line and is now waiting). Past ~60s users get impatient.
+- **Pointing an entry at a random CLI.** Won't work — `command` is dead. Use a
+  real ACP agent (Scenario A) or write a backend (Scenario B).
+- **Remote token not resolving.** Check the `env:` var is exported in the
+  process that runs `./start.sh`, and that the host lists the same token.
+- **Output too verbose for voice.** The voice path flattens bullets/headings;
+  tables and code fences still sound awkward. Have the agent answer
+  conversationally.
+- **Missing `("done", None)`.** The facade and SSE layer rely on it to close
+  the turn. A backend that never yields it hangs the UI.
 
-## Disabling the tool entirely
+## Disabling agents entirely
 
-Set `agent.command: []` (empty list). The assistant runs in voice-only mode with no external tool — useful for demos or privacy-sensitive deployments.
-
-## Wrapping a non-CLI agent
-
-If the agent runs as an HTTP service or library, write a tiny shell script that bridges it:
-
-```bash
-#!/usr/bin/env bash
-# scripts/my-agent.sh — bridges an HTTP service to the call_agent CLI contract
-curl -fsS -X POST "https://my-service.example.com/query" \
-  -H "Authorization: Bearer $MY_TOKEN" \
-  -H "X-Requester: $AGENT_REQUESTER_NAME" \
-  -d "{\"query\": $(jq -Rs . <<< "$1")}" \
-  | jq -r .answer
-```
-
-Then in `config.yaml`:
-
-```yaml
-agent:
-  command: ["./scripts/my-agent.sh", "{query}"]
-```
-
-Same contract — argv in, stdout out.
+Set `enabled: false` on every entry (or leave `agents:` empty and drop the
+legacy `agent:` block). Conversations then fall back to the local default only
+if a Hermes is installed; otherwise the tool surface reports no agent
+available.

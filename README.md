@@ -53,48 +53,85 @@ to live voice.
 ## How the agent plug-in works
 
 The Realtime model has exactly one tool, `call_agent`. When the model decides
-a question needs live data, scheduling, or any kind of real-world action, it
-emits a function call with a `query` argument. The backend runs your
-configured command as a subprocess and pipes the agent's stdout back as the
-tool result.
+a question needs live data, scheduling, or any real-world action, the backend
+routes the turn to an **agent backend** — a Hermes process spoken to over ACP
+(Agent Client Protocol). The answer streams back as the tool result.
 
-In `config.yaml`:
-
-```yaml
-agent:
-  label: "Hermes"               # shown in the UI ("Querying Hermes…")
-  command:                      # argv list — {query} and {user_id} get substituted
-    - hermes
-    - -z
-    - "{query}"
-    - --yolo
-  timeout_seconds: 180
-  description: >
-    Hermes has access to live integrations (calendar, email, files, web
-    search, scheduled tasks, persistent memory). Use it whenever the user
-    asks about real data or wants something done.
-```
-
-Want to use something other than Hermes? Anything that reads a query from
-argv and writes the answer to stdout works:
+Each conversation is bound to an *agent instance*; instances are declared in
+`config.yaml` under `agents:`. An instance's `transport` decides how it's
+reached:
 
 ```yaml
-# Plain Python script
-agent:
-  command: ["python3", "/path/to/my_agent.py", "{query}"]
+agents:
+  - id: local-default
+    label: "Hermes (local)"
+    transport: local-acp        # spawns `hermes acp` as a subprocess
 
-# Bash script
-agent:
-  command: ["./scripts/agent.sh", "{query}"]
-
-# An OpenAI Agents SDK app, CrewAI flow, etc. — wrap it in a CLI and point here.
+  - id: vps-prod
+    label: "Hermes VPS"
+    transport: remote-acp        # talks to a remote host over a WS bridge
+    transport_config:
+      url: "wss://my-host.example.com/api/host/acp"
+      token: "env:VPS_HOST_TOKEN"
 ```
 
-The subprocess gets three env vars so it knows who's asking:
-`AGENT_REQUESTER_ID`, `AGENT_REQUESTER_NAME`, `AGENT_REQUESTER_ROLE`.
+If you omit `agents:` entirely, a legacy single `agent:` block is auto-migrated
+to one `local-default` instance — so existing setups keep working unchanged.
+Conversations with no agent bound fall back to the local Hermes.
 
-If you set `agent.command:` to an empty list, the tool is disabled and the
-assistant runs in voice-only mode (no live data, no actions).
+Identity flows to the agent via three env vars (local) or `X-Requester-*`
+headers (remote): `AGENT_REQUESTER_ID`, `AGENT_REQUESTER_NAME`,
+`AGENT_REQUESTER_ROLE`.
+
+Want a different agent, or to wire your own (an OpenAI Agents SDK app, a CrewAI
+flow)? That means implementing an `AgentBackend` subclass — the one
+polymorphism seam. The `/add-agent-backend` Claude skill walks both paths
+(register another Hermes vs. implement a new backend type).
+
+### Deploy a remote Hermes
+
+To serve one hermes-companion's agent from another machine (a VPS, a Tailscale
+node), run the remote box in **host mode** — it exposes only the `/api/host/*`
+bridge and nothing client-facing:
+
+1. **On the host**, declare one or more bearer tokens in `config.yaml`:
+
+   ```yaml
+   host_tokens:
+     - token: "a-long-unguessable-random-string"   # 32+ chars
+       label: "vps-prod"
+   ```
+
+2. **Start the host with host mode on:**
+
+   ```bash
+   HERMES_COMPANION_MODE=host ./start.sh
+   ```
+
+   In this mode every route except `/api/host/*` and `/api/health` returns 404
+   — there is no UI, just the bridge. The host needs `hermes acp` installed and
+   on PATH; it runs the agent locally and relays turns over the WebSocket.
+
+3. **On the client**, point a `remote-acp` agent at the host's `/api/host/acp`
+   WebSocket and supply the matching token (prefer an `env:` reference so the
+   secret stays out of `config.yaml`):
+
+   ```yaml
+   agents:
+     - id: vps-prod
+       label: "Hermes VPS"
+       transport: remote-acp
+       transport_config:
+         url: "wss://my-host.example.com/api/host/acp"
+         token: "env:VPS_HOST_TOKEN"
+   ```
+
+   Use `wss://` (TLS) for anything off `localhost`. The bridge also backs the
+   read-only inspection endpoints (skills / MCP / tools / config), frame upload
+   for vision, and the system-prompt override.
+
+To disable the agent tool entirely, leave `agents:` empty (and drop the legacy
+`agent:` block). The assistant then runs voice-only, with no live data.
 
 ## Personalize
 
@@ -107,7 +144,8 @@ Everything user-facing is in **`config.yaml`** at the repo root:
 | `default_language` | ISO code for the Realtime transcriber and default greetings |
 | `personality` | Free-form blurb appended to the system prompt |
 | `team` | Login users (id, name, role, optional `shared_space: true`) |
-| `agent.*` | External agent command, label, timeout, description |
+| `agents[]` | Agent instances: `id`, `label`, `transport` (`local-acp`/`remote-acp`), `transport_config`, `system_prompt_override` |
+| `host_tokens[]` | Bearer tokens that authenticate remote clients when this box runs in host mode |
 | `system_prompt` *(optional)* | Replace the entire default prompt if you want full control |
 
 The default system prompt has sensible routing rules (DIRECT mode vs AGENT
@@ -122,7 +160,7 @@ thing yourself.
    mic 24kHz PCM16   ──>     WS /api/realtime    ──>   wss://api.openai.com
                                     │                          │
                                     │  intercepts tool_call    │
-                                    ├─ subprocess(your-agent ─ {query}) ──> stdout
+                                    ├─ AgentBackend.stream(query) ──> ACP (local or remote)
                                     │
    audio.delta      <──      forward                   <──     audio.delta
    transcripts      <──      forward + SQLite          <──     transcript.delta
@@ -130,9 +168,10 @@ thing yourself.
 
 | File | What it does |
 |---|---|
-| `backend/main.py` | FastAPI app: auth cookie, CRUD, text chat (direct agent passthrough via SSE) |
+| `backend/main.py` | FastAPI app: auth cookie, CRUD, text chat (SSE), agent registry + host endpoints |
 | `backend/realtime.py` | WebSocket proxy to OpenAI Realtime — VAD config, vision frame injection |
-| `backend/agent_bridge.py` | Runs your configured `agent.command` as a subprocess |
+| `backend/agent_bridge.py` | Facade that resolves the conversation's `AgentBackend` and streams its turn |
+| `backend/agents/` | `AgentBackend` ABC + `LocalAcpBackend` / `RemoteAcpBackend` over ACP |
 | `backend/config.py` | Loads `config.yaml`, builds the system prompt |
 | `backend/database.py` | SQLite (`companion.db`) — users seeded from config |
 | `backend/face_service.py` | Optional face recognition via `face_recognition`/dlib |

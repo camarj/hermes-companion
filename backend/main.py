@@ -368,7 +368,6 @@ async def api_delete_agent(agent_id: str, request: Request):
         )
     delete_agent_instance(agent_id)
     return Response(status_code=204)
-    return {"success": True}
 
 
 # ---------------------------------------------------------------------------
