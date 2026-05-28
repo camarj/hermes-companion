@@ -223,6 +223,16 @@ Tests are written **before** the code that satisfies the AC. See `CLAUDE.md` →
 - **And** the spoken response reflects data from the remote agent.
 - **Test:** manual `/verify`.
 
+#### AC-W1-V1a: Voice connects on the active conversation, not a fresh local one
+
+- **Maps to:** PRD §4.3 (decision 3); regression found during V1 manual smoke.
+- **Given** an active conversation bound to a non-default agent,
+- **When** voice connects,
+- **Then** it reuses that conversation's id (so the turn routes to its bound
+  agent); and when there is no active conversation it creates one bound to the
+  currently selected agent — never silently defaulting to `local-default`.
+- **Test:** Vitest — `frontend/src/hooks/__tests__/resolveVoiceConversationId.test.ts`.
+
 #### AC-W1-V2: Voice + vision in remote conversation uploads frame correctly
 
 - **Maps to:** PRD §4.1 item 5.
