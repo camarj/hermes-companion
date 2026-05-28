@@ -241,6 +241,16 @@ Tests are written **before** the code that satisfies the AC. See `CLAUDE.md` →
 - **Then** the experience is identical to `main` pre-Wave 1.
 - **Test:** manual `/verify` smoke checklist.
 
+#### AC-W1-B1a: hermes acp is spawned with shell-hook auto-approval
+
+- **Maps to:** PRD §4.5; regression found during the B1 smoke.
+- **Given** a turn whose agent needs to run a tool guarded by a shell-hook
+  prompt (the legacy `hermes chat --yolo` auto-approved these),
+- **When** `hermes acp` is spawned for the turn (local or host),
+- **Then** the subprocess env sets `HERMES_ACCEPT_HOOKS=1`, so it does not block
+  forever on the (TTY-less) approval prompt.
+- **Test:** pytest unit — `tests/backend/test_acp_accept_hooks.py`.
+
 ---
 
 ## Wave 2 — Omniagent (DRAFT)

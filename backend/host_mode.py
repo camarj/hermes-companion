@@ -58,6 +58,9 @@ async def _spawn_acp(env: dict[str, str]) -> asyncio.subprocess.Process:
     """Production spawn point — tests monkeypatch this with a fake."""
     proc_env = os.environ.copy()
     proc_env.update(env)
+    # Non-TTY subprocess: auto-approve shell-hook prompts or hermes acp blocks
+    # forever on the first one (legacy `hermes chat --yolo` did this implicitly).
+    proc_env.setdefault("HERMES_ACCEPT_HOOKS", "1")
     return await asyncio.create_subprocess_exec(
         "hermes", "acp",
         stdin=asyncio.subprocess.PIPE,
