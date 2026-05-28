@@ -106,6 +106,33 @@ host-side endpoints. One binary, two roles.
 **Trade-off:** the host install pulls in the React UI assets it does not
 use. The cost is bytes on disk, not runtime overhead.
 
+#### 3.2.1. Open requirement: friendly host-mode provisioning (deferred)
+
+The sidecar model is sound, but the *deployment ergonomics* are not yet
+solved. Today, standing up a remote host means a human SSHes into the box,
+clones the repo, builds a venv, installs `requirements.txt`, writes a
+`config.yaml` with `host_tokens:`, and launches with
+`HERMES_COMPANION_MODE=host`. That friction undermines the whole remote-agent
+value proposition — if deploying a remote is painful, nobody runs one.
+
+**Requirement:** a one-command install path that provisions the host-mode
+sidecar on a machine that *already* runs the `hermes` agent. The envisioned
+shape is an **install script that pulls the `hermes-companion` package from
+the repository onto the Hermes server**, sets it up in host mode, and seeds a
+bearer token — so the operator goes from "I have a `hermes` box" to "I have a
+reachable remote agent" in a single step.
+
+**Scope notes:**
+- This provisions the **companion sidecar**, not `hermes` itself — `hermes`
+  ships its own installer and is assumed present on the target.
+- Candidate forms (to be evaluated when this is picked up): a `curl | bash`
+  bootstrap script, a published install script in the repo, or a Docker image
+  for the host role. The script form (clone/pull + setup + token seed) is the
+  current front-runner per the maintainer.
+- **Deferred — not Wave 1.** Wave 1 only requires that a remote declared in
+  `config.yaml` works; manual deployment is acceptable for that milestone.
+  This is a usability deliverable for a later wave.
+
 ### 3.3. Polymorphism via a documented `AgentBackend` interface
 
 A small Python abstract base class — `backend/agents/base.py` —
@@ -186,6 +213,9 @@ A single user, on a single browser, can:
   surfaces).
 - Automatic reconnect / offline queue for downed remotes — future
   improvement.
+- Friendly host-mode provisioning (an install script that deploys the
+  companion sidecar onto a Hermes server) — deferred usability deliverable,
+  see §3.2.1.
 
 ### 4.3. Key design decisions
 
