@@ -14,6 +14,10 @@ NULL `agent_id` fall back to a local `hermes acp` subprocess (AC-W1-B1).
 
 from __future__ import annotations
 
+import asyncio
+import mimetypes
+import os
+from pathlib import Path
 from typing import AsyncIterator, Optional
 
 from agents.base import AgentBackend, AgentEvent, TurnContext
@@ -22,11 +26,72 @@ from agents.registry import build_local_backend, resolve_token
 from agents.remote_acp import RemoteAcpBackend
 from config import agent_enabled
 from database import (
+    create_artifact,
     get_agent_instance,
     get_conversation,
     get_conversation_session_id,
     update_conversation_session_id,
 )
+
+
+def _snapshot_dir(path: str) -> dict[str, tuple[float, int]]:
+    """Return {rel_path: (mtime, size)} for every file under `path`.
+
+    Runs synchronously; wrap in asyncio.to_thread when calling from async code.
+    Returns an empty dict when the directory doesn't exist or is empty.
+    """
+    result: dict[str, tuple[float, int]] = {}
+    root = Path(path)
+    if not root.is_dir():
+        return result
+    for dirpath, _, filenames in os.walk(root):
+        for fname in filenames:
+            full = Path(dirpath) / fname
+            try:
+                st = full.stat()
+                rel = str(full.relative_to(root))
+                result[rel] = (st.st_mtime, st.st_size)
+            except OSError:
+                pass
+    return result
+
+
+def _scan_new_artifacts(
+    cwd: str,
+    pre_snapshot: dict[str, tuple[float, int]],
+) -> list[dict]:
+    """Diff post-turn cwd state against pre_snapshot.
+
+    Returns a list of dicts for files that are NEW or MODIFIED (by size or
+    mtime). Each dict has: name, rel_path, mime_type, size_bytes, content_bytes.
+
+    Runs synchronously; wrap in asyncio.to_thread when calling from async code.
+    """
+    post_snapshot = _snapshot_dir(cwd)
+    results: list[dict] = []
+    root = Path(cwd)
+    for rel_path, (post_mtime, post_size) in post_snapshot.items():
+        pre_entry = pre_snapshot.get(rel_path)
+        if pre_entry is not None:
+            pre_mtime, pre_size = pre_entry
+            if post_mtime == pre_mtime and post_size == pre_size:
+                continue
+        full = root / rel_path
+        try:
+            content_bytes = full.read_bytes()
+        except OSError:
+            continue
+        name = full.name
+        mime_type, _ = mimetypes.guess_type(name)
+        mime_type = mime_type or "application/octet-stream"
+        results.append({
+            "name": name,
+            "rel_path": rel_path,
+            "mime_type": mime_type,
+            "size_bytes": len(content_bytes),
+            "content_bytes": content_bytes,
+        })
+    return results
 
 
 def _resolve_backend(conversation_id: Optional[str]) -> AgentBackend:
@@ -92,11 +157,16 @@ async def call_agent_stream(
     conversation_id: str | None = None,
     log_prefix: str = "[agent/local_acp]",
 ) -> AsyncIterator[tuple[str, str]]:
-    """Yield `(kind, text)` tuples for each AgentEvent of kind text or reasoning.
+    """Yield `(kind, text/dict)` tuples for each consumable AgentEvent.
 
-    The terminal `("done", None)` event is consumed internally; callers
-    just iterate until the generator is exhausted (matches the old
-    contract).
+    Yields kinds: "text", "reasoning", "artifact". The terminal "done" and
+    internal "session"/"cwd" events are consumed without forwarding.
+
+    AC-W3-A1: when a ("cwd", path) event arrives, a pre-turn snapshot is
+    taken. After the stream completes, new/modified files are scanned and
+    persisted as artifact rows; one ("artifact", dict) event is yielded per
+    captured artifact (with message_id=None; the SSE caller attaches that
+    after add_message returns).
 
     When `conversation_id` is given (AC-W1-D4), the facade:
       * loads the stored `hermes_session_id` and puts it on the
@@ -119,16 +189,39 @@ async def call_agent_stream(
     )
     print(f"{log_prefix} stream user={user_id} query={query[:80]!r}")
 
+    cwd: str | None = None
+    pre_snapshot: dict[str, tuple[float, int]] = {}
+
     async for kind, payload in backend.stream(query, context, image_paths=image_paths):
         if kind == "done":
-            return
+            break
         if kind == "session" and isinstance(payload, str):
             if conversation_id and payload != prior_session:
                 update_conversation_session_id(conversation_id, payload)
             continue
+        if kind == "cwd" and isinstance(payload, str):
+            cwd = payload
+            pre_snapshot = await asyncio.to_thread(_snapshot_dir, cwd)
+            continue
+        if kind == "artifact":
+            continue
         if kind in ("text", "reasoning") and isinstance(payload, str):
             yield (kind, payload)
         # "tool" events not yet surfaced in the UI — silently dropped.
+
+    if cwd:
+        new_files = await asyncio.to_thread(_scan_new_artifacts, cwd, pre_snapshot)
+        for file_info in new_files:
+            try:
+                artifact = create_artifact(
+                    name=file_info["name"],
+                    rel_path=file_info["rel_path"],
+                    content_bytes=file_info["content_bytes"],
+                    conversation_id=conversation_id,
+                )
+                yield ("artifact", artifact)
+            except Exception as exc:
+                print(f"{log_prefix} artifact capture failed for {file_info['name']!r}: {exc}")
 
 
 async def call_agent(

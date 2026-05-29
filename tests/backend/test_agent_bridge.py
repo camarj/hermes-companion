@@ -11,6 +11,7 @@ so we never spawn a real `hermes acp` for these tests.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import AsyncIterator
 
 import pytest
@@ -275,3 +276,35 @@ async def test_call_agent_stream_skips_persist_when_session_id_unchanged(monkeyp
         pass
 
     assert writes == []
+
+
+# ── AC-W3-A1: _snapshot_dir helper ────────────────────────────────────────
+
+def test_snapshot_dir_returns_rel_path_mtime_size_dict(tmp_path):
+    """_snapshot_dir returns {rel_path: (mtime, size)} for all files in tree."""
+    (tmp_path / "a.txt").write_text("hello")
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "b.txt").write_text("world")
+
+    snapshot = agent_bridge._snapshot_dir(str(tmp_path))
+
+    assert "a.txt" in snapshot
+    assert "sub/b.txt" in snapshot or str(Path("sub") / "b.txt") in snapshot
+
+    entry = snapshot["a.txt"]
+    assert isinstance(entry, tuple) and len(entry) == 2
+    mtime, size = entry
+    assert isinstance(mtime, float)
+    assert size == 5
+
+
+def test_snapshot_dir_empty_returns_empty_dict(tmp_path):
+    snapshot = agent_bridge._snapshot_dir(str(tmp_path))
+    assert snapshot == {}
+
+
+def test_snapshot_dir_nonexistent_path_returns_empty_dict(tmp_path):
+    missing = str(tmp_path / "does_not_exist")
+    snapshot = agent_bridge._snapshot_dir(missing)
+    assert snapshot == {}
