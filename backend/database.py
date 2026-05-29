@@ -5,6 +5,9 @@ faces. Schema is created on first boot and the team table is seeded from
 """
 
 import json
+import mimetypes
+import os
+import shutil
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -12,8 +15,11 @@ from pathlib import Path
 from typing import Optional
 
 from config import agents as configured_agents
+from config import data_dir as _data_dir
 from config import host_tokens as configured_host_tokens
 from config import team as configured_team
+
+ARTIFACT_INLINE_MAX_BYTES = 1 * 1024 * 1024  # 1 MB; <= inline BLOB, > stored on disk
 
 DB_PATH = Path(__file__).parent / "companion.db"
 
@@ -90,6 +96,28 @@ def init_db():
                 created_at    TEXT NOT NULL,
                 last_used_at  TEXT
             );
+
+            -- Wave 3 (A1): agent-produced file artifacts.
+            CREATE TABLE IF NOT EXISTS artifacts (
+                id                  TEXT PRIMARY KEY,
+                conversation_id     TEXT,
+                message_id          TEXT,
+                task_id             TEXT,
+                name                TEXT NOT NULL,
+                rel_path            TEXT NOT NULL,
+                mime_type           TEXT NOT NULL,
+                size_bytes          INTEGER NOT NULL,
+                content             BLOB,
+                file_path           TEXT,
+                created_by_agent_id TEXT,
+                created_at          TEXT NOT NULL,
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+                FOREIGN KEY (message_id)      REFERENCES messages(id)      ON DELETE CASCADE,
+                FOREIGN KEY (created_by_agent_id) REFERENCES agent_instances(id),
+                CHECK ((content IS NOT NULL) <> (file_path IS NOT NULL))
+            );
+            CREATE INDEX IF NOT EXISTS idx_artifacts_conv ON artifacts(conversation_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_artifacts_msg  ON artifacts(message_id);
         """)
 
         # ALTER existing conversations table for upgrades from pre-Fase-2 DBs.
@@ -361,8 +389,19 @@ def update_conversation_session_id(conv_id: str, session_id: str) -> bool:
 def delete_conversation(conv_id: str) -> bool:
     conn = get_db()
     try:
+        file_paths = [
+            row[0] for row in conn.execute(
+                "SELECT file_path FROM artifacts WHERE conversation_id = ? AND file_path IS NOT NULL",
+                (conv_id,),
+            ).fetchall()
+        ]
         cursor = conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
         conn.commit()
+        for fp in file_paths:
+            try:
+                os.unlink(fp)
+            except OSError:
+                pass
         return cursor.rowcount > 0
     finally:
         conn.close()
@@ -632,6 +671,129 @@ def delete_known_faces_by_name(name: str) -> int:
     conn = get_db()
     try:
         cursor = conn.execute("DELETE FROM known_faces WHERE name = ?", (name,))
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
+# ── Artifacts (Wave 3, A1) ─────────────────────────────────────────────────
+
+def create_artifact(
+    *,
+    name: str,
+    rel_path: str,
+    content_bytes: bytes,
+    conversation_id: Optional[str] = None,
+    message_id: Optional[str] = None,
+    created_by_agent_id: Optional[str] = None,
+) -> dict:
+    """Persist a captured artifact.
+
+    Files <= ARTIFACT_INLINE_MAX_BYTES are stored as BLOB; larger files are
+    copied into DATA_DIR/<conversation_id>/<artifact_id>/<name> and their
+    path is stored instead.
+    """
+    artifact_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    size_bytes = len(content_bytes)
+
+    mime_type, _ = mimetypes.guess_type(name)
+    mime_type = mime_type or "application/octet-stream"
+
+    if size_bytes <= ARTIFACT_INLINE_MAX_BYTES:
+        content = content_bytes
+        file_path: Optional[str] = None
+    else:
+        bucket = _data_dir() / "artifacts" / (conversation_id or "orphan") / artifact_id
+        bucket.mkdir(parents=True, exist_ok=True)
+        dest = bucket / name
+        dest.write_bytes(content_bytes)
+        content = None
+        file_path = str(dest)
+
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            INSERT INTO artifacts
+                (id, conversation_id, message_id, task_id, name, rel_path,
+                 mime_type, size_bytes, content, file_path, created_by_agent_id, created_at)
+            VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                artifact_id, conversation_id, message_id, name, rel_path,
+                mime_type, size_bytes, content, file_path, created_by_agent_id, now,
+            ),
+        )
+        conn.commit()
+        return {
+            "id": artifact_id,
+            "conversation_id": conversation_id,
+            "message_id": message_id,
+            "name": name,
+            "rel_path": rel_path,
+            "mime_type": mime_type,
+            "size_bytes": size_bytes,
+            "content": content,
+            "file_path": file_path,
+            "created_by_agent_id": created_by_agent_id,
+            "created_at": now,
+        }
+    finally:
+        conn.close()
+
+
+def list_artifacts_for_message(message_id: str) -> list[dict]:
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, conversation_id, message_id, name, rel_path, mime_type, "
+            "size_bytes, file_path, created_at "
+            "FROM artifacts WHERE message_id = ? ORDER BY created_at ASC",
+            (message_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def list_artifacts_for_conversation(conv_id: str) -> list[dict]:
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, conversation_id, message_id, name, rel_path, mime_type, "
+            "size_bytes, file_path, created_at "
+            "FROM artifacts WHERE conversation_id = ? ORDER BY created_at ASC",
+            (conv_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_artifact(artifact_id: str) -> Optional[dict]:
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM artifacts WHERE id = ?", (artifact_id,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def attach_artifacts_to_message(artifact_ids: list[str], message_id: str) -> int:
+    """Set message_id on a batch of artifact rows. Returns number of rows updated."""
+    if not artifact_ids:
+        return 0
+    conn = get_db()
+    try:
+        placeholders = ",".join("?" * len(artifact_ids))
+        cursor = conn.execute(
+            f"UPDATE artifacts SET message_id = ? WHERE id IN ({placeholders})",
+            [message_id, *artifact_ids],
+        )
         conn.commit()
         return cursor.rowcount
     finally:
