@@ -30,6 +30,14 @@ export type AgentInstance = {
   updated_at: string
 }
 
+export type CreateAgentPayload = {
+  id: string
+  label: string
+  type: string
+  transport: string
+  transport_config?: Record<string, unknown>
+}
+
 export type Message = {
   id: number
   conversation_id: string

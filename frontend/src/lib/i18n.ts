@@ -70,6 +70,16 @@ type Dict = {
   mcpSection: string
   toolsSection: string
   configSection: string
+  addAgent: string
+  newAgentTitle: string
+  newAgentHint: string
+  fieldId: string
+  fieldLabel: string
+  agentType: string
+  transport: string
+  fieldUrl: string
+  fieldToken: string
+  createAgentFailed: string
 }
 
 const ES: Dict = {
@@ -142,6 +152,17 @@ const ES: Dict = {
   mcpSection: "MCP",
   toolsSection: "Tools",
   configSection: "Config",
+  addAgent: "Agregar agente",
+  newAgentTitle: "Nueva instancia de agente",
+  newAgentHint:
+    "Registrá un agente nuevo. Para remotos, apuntá al bridge /api/host/acp del host.",
+  fieldId: "ID",
+  fieldLabel: "Etiqueta",
+  agentType: "Tipo",
+  transport: "Transporte",
+  fieldUrl: "URL",
+  fieldToken: "Token",
+  createAgentFailed: "No se pudo crear el agente.",
 }
 
 const EN: Dict = {
@@ -214,6 +235,17 @@ const EN: Dict = {
   mcpSection: "MCP",
   toolsSection: "Tools",
   configSection: "Config",
+  addAgent: "Add agent",
+  newAgentTitle: "New agent instance",
+  newAgentHint:
+    "Register a new agent. For remotes, point at the host's /api/host/acp bridge.",
+  fieldId: "ID",
+  fieldLabel: "Label",
+  agentType: "Type",
+  transport: "Transport",
+  fieldUrl: "URL",
+  fieldToken: "Token",
+  createAgentFailed: "Could not create the agent.",
 }
 
 const PT: Dict = {
