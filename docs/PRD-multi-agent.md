@@ -309,9 +309,9 @@ via `npm i -g openclaw`.
 
 ### 5.2. Approach
 
-1. Add `OpenClawBackend(AgentBackend)`. If OpenClaw supports ACP, reuse
-   the existing ACP client; otherwise, write a thin event mapper that
-   yields the same `AgentEvent` shapes.
+1. Add `OpenClawBackend(AgentBackend)`. OpenClaw speaks ACP over stdio
+   (confirmed — see §5.3), so this reuses the existing `acp_client` and
+   spawns `openclaw acp` instead of `hermes acp`.
 2. Surface "agent type" in the UI when creating an instance (`hermes` /
    `openclaw` / `custom`).
 3. Leverage `hermes claw` (already present in Hermes' CLI) for config
@@ -320,17 +320,47 @@ via `npm i -g openclaw`.
    canonical worked example for contributors who want to add a third
    type.
 
-### 5.3. Open questions for Wave 2
+### 5.3. Open questions for Wave 2 — resolved by spike
 
-- Does OpenClaw expose streaming over a stable interface? If not, how do
-  we keep the "no buffered responses" contract?
-- Is there a host-side equivalent (a way to expose a remote OpenClaw via
-  the same sidecar pattern), or do we narrow Wave 2 to local-only
-  OpenClaw and revisit remote later?
-- How do we surface per-agent capability differences in the UI without
-  it becoming noisy (e.g. some agents have skills, some do not)?
+A documentation spike (docs.openclaw.ai, 2026-05-29) resolved the original
+open questions. Verified facts:
 
-These will be re-opened as a Wave 2 PRD revision when Wave 1 ships.
+- **OpenClaw speaks ACP over stdio** via `openclaw acp` — the same shape as
+  `hermes acp`. So `OpenClawBackend` **reuses the existing `acp_client`**
+  rather than needing a bespoke event mapper. Streaming is preserved (ACP
+  `message` + `tool_call` notifications), so the "no buffered responses"
+  contract holds.
+- **No host-side sidecar is needed for remote OpenClaw.** The bridge connects
+  to a remote Gateway natively (`openclaw acp --url wss://host:18789 --token`),
+  so from our side a remote OpenClaw is still a *local* `openclaw acp`
+  subprocess. Wave 2 OpenClaw is therefore `type: openclaw`, `transport:
+  local-acp`, with an optional gateway URL/token in `transport_config`.
+- **Capability differences are real and OpenClaw is the first example:** its
+  stdio bridge does **not** emit reasoning/thought frames ("output text and
+  tool status, not ACP plan or thought updates"). The UI already degrades
+  gracefully (no thinking block) — this is the regression the §4.4 risk
+  anticipated. Per-agent capabilities are surfaced by *absence* (no thinking
+  block appears), not by extra chrome.
+
+**Type vs transport are orthogonal.** `type` (hermes/openclaw/custom) selects
+the CLI + event mapping; `transport` (local-acp/remote-acp) selects where it
+runs. AC-W2-A1 requires the backend dispatch to move from a hardcoded
+`if/elif` to a `type → backend` registry so a new type needs only a new
+`AgentBackend` subclass plus one registry entry.
+
+**Known integration risk (to validate during Slice 3):** the `openclaw acp`
+stdio bridge has **no headless approve-all flag** (only the `acpx` harness
+exposes `permissionMode=approve-all`). The allowlist auto-approves read/search
+tools, but exec/mutating tools prompt — which a non-TTY subprocess cannot
+answer (the same failure class as the Hermes `HERMES_ACCEPT_HOOKS` fix). If
+this blocks, the fallback is to drive OpenClaw via `acpx` or document the
+limitation.
+
+**Install/runtime preconditions:** `npm install -g openclaw@latest` and a
+running Gateway daemon (`openclaw onboard --install-daemon`, local default
+`http://127.0.0.1:18789`). Auth via `OPENCLAW_GATEWAY_TOKEN` / `--token-file`.
+
+Refs: <https://docs.openclaw.ai/cli/acp>, <https://docs.openclaw.ai/gateway/protocol>.
 
 ---
 
