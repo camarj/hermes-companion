@@ -320,7 +320,15 @@ Open questions resolved by the OpenClaw spike — see PRD §5.3.
 
 - **AC-W2-D1 (draft):** Multiple instances of different types coexist and resume correctly. *(Coexistence is satisfied by the registry + creation UI; per-type native-session resume is unit-covered — `hermes` and `openclaw` both `load_session` on a prior id. Resume against a real OpenClaw Gateway is manual `/verify`.)*
 - **AC-W2-H1 (draft):** Host mode supports `openclaw` runners alongside `hermes acp`.
-- **AC-W2-DOC1 (draft):** `/add-agent-backend` Claude skill produces a working backend for a new agent type in one session.
+
+#### AC-W2-DOC1: `/add-agent-backend` teaches the registry path for a new type
+
+- **Maps to:** PRD §5.2 item 4.
+- **Given** a contributor wants to add a new agent type,
+- **When** they follow `.claude/skills/add-agent-backend/SKILL.md`,
+- **Then** it directs them to subclass `AgentBackend` + `register_local_backend(type, factory)` with no dispatcher edit (matching AC-W2-A1), using `OpenClawBackend` as the worked example,
+- **And** it instructs them to document any capability limits their backend inherits (the OpenClaw lesson) in the ACs and PRD.
+- **Evidence:** `OpenClawBackend` (Slice 3) is the concrete proof a new type was added this way; no automated test (skill-quality doc).
 
 ---
 
