@@ -11,6 +11,7 @@ so we never spawn a real `hermes acp` for these tests.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -309,3 +310,38 @@ def test_snapshot_dir_nonexistent_path_returns_empty_dict(tmp_path):
     missing = str(tmp_path / "does_not_exist")
     snapshot = agent_bridge._snapshot_dir(missing)
     assert snapshot == {}
+
+
+def test_snapshot_dir_does_not_read_bytes_for_old_files(tmp_path, monkeypatch):
+    """_snapshot_dir must NOT read file contents for files older than the tie window.
+
+    Lazy hashing: only files whose mtime is within ~2 s of now are hashed.
+    Older files produce an empty-string hash placeholder via stat() only.
+    This proves the O(stat) path for accumulated workdir files between turns.
+    """
+    old_file = tmp_path / "old.bin"
+    old_file.write_bytes(b"some binary data that should never be read")
+
+    # Back-date the file well outside the 2-second tie window.
+    old_mtime = __import__("time").time() - 60.0
+    os.utime(str(old_file), (old_mtime, old_mtime))
+
+    read_calls: list[str] = []
+
+    original_read_bytes = Path.read_bytes
+
+    def spy_read_bytes(self: Path) -> bytes:
+        read_calls.append(str(self))
+        return original_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", spy_read_bytes)
+
+    snapshot = agent_bridge._snapshot_dir(str(tmp_path))
+
+    assert "old.bin" in snapshot, "old file must still appear in snapshot"
+    mtime, size, sha = snapshot["old.bin"]
+    assert sha == "", "old file hash must be empty (lazy — no content read)"
+    assert read_calls == [], (
+        "_snapshot_dir must not call read_bytes for files outside the tie window; "
+        f"unexpected reads: {read_calls}"
+    )
