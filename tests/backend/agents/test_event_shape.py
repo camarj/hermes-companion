@@ -28,6 +28,30 @@ def test_invalid_events_are_rejected():
     assert not is_agent_event("text")  # not a tuple
 
 
+# ── AC-W3-A1: cwd and artifact event kinds ────────────────────────────────
+
+def test_cwd_event_is_valid():
+    assert is_agent_event(("cwd", "/tmp"))
+    assert is_agent_event(("cwd", "/some/path"))
+
+
+def test_cwd_event_payload_must_be_str():
+    assert not is_agent_event(("cwd", 123))
+    assert not is_agent_event(("cwd", None))
+    assert not is_agent_event(("cwd", {}))
+
+
+def test_artifact_event_is_valid():
+    assert is_agent_event(("artifact", {}))
+    assert is_agent_event(("artifact", {"id": "x", "name": "f.txt"}))
+
+
+def test_artifact_event_payload_must_be_dict():
+    assert not is_agent_event(("artifact", "not a dict"))
+    assert not is_agent_event(("artifact", None))
+    assert not is_agent_event(("artifact", 42))
+
+
 async def test_arbitrary_backend_only_yields_valid_events():
     class Fake(AgentBackend):
         async def stream(

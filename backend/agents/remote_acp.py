@@ -131,6 +131,12 @@ class RemoteAcpBackend(AgentBackend):
         *,
         image_paths: list[str] | None = None,
     ) -> AsyncIterator[AgentEvent]:
+        # AC-W3-A1 limitation: RemoteAcpBackend yields NO ("cwd", ...) event.
+        # The agent's working directory lives on the remote host's filesystem;
+        # the companion process cannot walk it locally. The artifact capture
+        # facade skips the scan when no cwd event is received. Capturing remote
+        # artifacts would require a host-side listing+download endpoint that
+        # does not exist. This is a documented limitation, not a TODO.
         auth = self._auth_headers(context)
 
         try:

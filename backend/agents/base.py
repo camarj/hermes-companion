@@ -24,10 +24,14 @@ One of:
   ("session", str)     — native session id from the agent; consumed by the
                          facade for persistence + resume. Not forwarded to UI.
   ("done", None)       — terminator; signals the turn is complete.
+  ("cwd", str)         — working directory for this turn; consumed by the
+                         facade for artifact capture. Not forwarded to UI.
+  ("artifact", dict)   — persisted artifact metadata; forwarded to the SSE
+                         endpoint for attribution. Not forwarded as UI text.
 """
 
 
-_VALID_KINDS = frozenset({"text", "reasoning", "tool", "session", "done"})
+_VALID_KINDS = frozenset({"text", "reasoning", "tool", "session", "done", "cwd", "artifact"})
 
 
 def is_agent_event(value: object) -> bool:
@@ -37,9 +41,9 @@ def is_agent_event(value: object) -> bool:
     kind, payload = value
     if kind not in _VALID_KINDS:
         return False
-    if kind in ("text", "reasoning", "session"):
+    if kind in ("text", "reasoning", "session", "cwd"):
         return isinstance(payload, str)
-    if kind == "tool":
+    if kind in ("tool", "artifact"):
         return isinstance(payload, dict)
     if kind == "done":
         return payload is None

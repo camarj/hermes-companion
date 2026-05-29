@@ -21,6 +21,7 @@ the OpenClaw protocol/repo, 2026-05-29 — see PRD §5.3 for citations):
 
 from __future__ import annotations
 
+import tempfile
 from functools import partial
 from typing import AsyncIterator, Optional
 
@@ -34,11 +35,15 @@ class OpenClawBackend(AgentBackend):
     def __init__(
         self,
         *,
+        cwd: Optional[str] = None,
         gateway_url: Optional[str] = None,
         gateway_token: Optional[str] = None,
         client_factory: AcpClientFactory | None = None,
         system_prompt_override: Optional[str] = None,
     ) -> None:
+        # When no cwd is supplied (e.g. fallback path with no conversation_id),
+        # create an isolated tmpdir so we never land in the shared /tmp root.
+        self._cwd = cwd if cwd is not None else tempfile.mkdtemp(prefix="hermes-companion-openclaw-")
         # Stored but inert for now — see module docstring (capability gap).
         self._system_prompt = system_prompt_override
         self._client_factory: AcpClientFactory = client_factory or partial(
@@ -54,12 +59,14 @@ class OpenClawBackend(AgentBackend):
     ) -> AsyncIterator[AgentEvent]:
         env = _build_env(context)
         content_blocks = _build_prompt_blocks(query, image_paths)
+        cwd = self._cwd
+        yield ("cwd", cwd)
         async with self._client_factory(env=env) as client:
             await client.initialize()
             if context.session_id:
-                session_id = await client.load_session(context.session_id, cwd="/tmp")
+                session_id = await client.load_session(context.session_id, cwd=cwd)
             else:
-                session_id = await client.new_session(cwd="/tmp")
+                session_id = await client.new_session(cwd=cwd)
             yield ("session", session_id)
             async for event in client.prompt(session_id, content_blocks):
                 yield event

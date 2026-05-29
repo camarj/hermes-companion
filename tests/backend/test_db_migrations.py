@@ -7,6 +7,8 @@ that by creating the legacy schema by hand and then running init_db).
 """
 
 import sqlite3
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -101,3 +103,51 @@ def test_init_db_migrates_legacy_conversations_table(temp_db: Path):
     # No agent_id has been assigned yet — that's Cycle 3 (AC-W1-D3).
     # Just confirm the columns are nullable and the legacy row didn't blow up.
     assert row[2] is None
+
+
+# ── AC-W3-A1: artifacts table ─────────────────────────────────────────────
+
+
+def test_init_db_creates_artifacts_table(inited_db: Path):
+    conn = sqlite3.connect(str(inited_db))
+    try:
+        cols = {c[1] for c in conn.execute("PRAGMA table_info(artifacts)").fetchall()}
+    finally:
+        conn.close()
+    assert cols >= {
+        "id", "conversation_id", "message_id", "name", "rel_path",
+        "mime_type", "size_bytes", "content", "file_path", "created_at",
+    }
+
+
+def test_init_db_artifacts_table_is_idempotent(temp_db: Path):
+    import database
+
+    database.init_db()
+    database.init_db()
+    conn = sqlite3.connect(str(temp_db))
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='artifacts'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert count == 1
+
+
+def test_init_db_artifacts_check_constraint_enforced(inited_db: Path):
+    """Exactly one of content / file_path must be non-null."""
+    conn = sqlite3.connect(str(inited_db))
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        artifact_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        # Both NULL → violates CHECK constraint
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO artifacts (id, name, rel_path, mime_type, size_bytes, created_at) "
+                "VALUES (?, 'f.txt', 'f.txt', 'text/plain', 10, ?)",
+                (artifact_id, now),
+            )
+    finally:
+        conn.close()
