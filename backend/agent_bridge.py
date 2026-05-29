@@ -19,6 +19,7 @@ from typing import AsyncIterator, Optional
 
 from agents.base import AgentBackend, AgentEvent, TurnContext
 from agents.local_acp import LocalAcpBackend
+from agents.registry import build_local_backend
 from agents.remote_acp import RemoteAcpBackend
 from config import agent_enabled
 from database import (
@@ -42,10 +43,11 @@ def _resolve_backend(conversation_id: Optional[str]) -> AgentBackend:
     Resolution order:
       1. No conversation_id (voice without conversation, legacy callers) → Local.
       2. Conversation row missing or its agent_id is NULL → Local (AC-W1-B1).
-      3. agent_instance.transport == "local-acp" → LocalAcpBackend.
-      4. agent_instance.transport == "remote-acp" → RemoteAcpBackend, with
-         token resolved via `_resolve_token()`.
-      5. Anything else → Local (forward-compat for future transports).
+      3. agent_instance.transport == "remote-acp" → RemoteAcpBackend, with
+         token resolved via `_resolve_token()` (type-agnostic — the host runs
+         whatever CLI it was provisioned with).
+      4. Otherwise (local-acp / default) → the registry picks the backend by
+         the instance `type` (AC-W2-A1). Adding a type needs no change here.
     """
     if not conversation_id:
         return LocalAcpBackend()
@@ -67,9 +69,7 @@ def _resolve_backend(conversation_id: Optional[str]) -> AgentBackend:
             token=_resolve_token(cfg.get("token", "")),
             system_prompt_override=agent.get("system_prompt_override"),
         )
-    return LocalAcpBackend(
-        system_prompt_override=agent.get("system_prompt_override"),
-    )
+    return build_local_backend(agent)
 
 
 _DISABLED_MESSAGE = (

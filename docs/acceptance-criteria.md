@@ -283,12 +283,21 @@ Tests are written **before** the code that satisfies the AC. See `CLAUDE.md` →
 
 ---
 
-## Wave 2 — Omniagent (DRAFT)
+## Wave 2 — Omniagent
 
-Refined when Wave 1 merges.
+Open questions resolved by the OpenClaw spike — see PRD §5.3.
 
-- **AC-W2-A1 (draft):** Adding a new agent type requires implementing only `AgentBackend`; no other module changes.
-- **AC-W2-A2 (draft):** `OpenClawBackend` round-trips a query with streaming, emitting the same `AgentEvent` shapes as Hermes backends.
+#### AC-W2-A1: A new agent type is dispatched without editing the dispatcher
+
+- **Maps to:** PRD §3.3, §5.3.
+- **Given** a backend registry keyed by agent `type`,
+- **When** a new type's factory is registered via `register_local_backend(type, factory)`,
+- **Then** `build_local_backend({"type": <new>})` returns that backend,
+- **And** the dispatcher (`agent_bridge._resolve_backend`) needs no change to route it — adding a type is "new `AgentBackend` subclass + one registration line",
+- **And** an unknown/absent type falls back to the `hermes` local backend (back-compat).
+- **Test:** pytest unit — `tests/backend/agents/test_registry.py`.
+
+- **AC-W2-A2 (draft):** `OpenClawBackend` round-trips a query with streaming, emitting the same `AgentEvent` shapes as Hermes backends (no reasoning frames — OpenClaw's stdio bridge does not emit them; see PRD §5.3).
 - **AC-W2-U1 (draft):** Instance creation UI exposes a type selector (`hermes`, `openclaw`, `custom`).
 - **AC-W2-D1 (draft):** Multiple instances of different types coexist and resume correctly.
 - **AC-W2-H1 (draft):** Host mode supports `openclaw` runners alongside `hermes acp`.
