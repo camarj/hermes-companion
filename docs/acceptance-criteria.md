@@ -297,7 +297,16 @@ Open questions resolved by the OpenClaw spike — see PRD §5.3.
 - **And** an unknown/absent type falls back to the `hermes` local backend (back-compat).
 - **Test:** pytest unit — `tests/backend/agents/test_registry.py`.
 
-- **AC-W2-A2 (draft):** `OpenClawBackend` round-trips a query with streaming, emitting the same `AgentEvent` shapes as Hermes backends (no reasoning frames — OpenClaw's stdio bridge does not emit them; see PRD §5.3).
+#### AC-W2-A2: OpenClawBackend streams over ACP, reusing the client
+
+- **Maps to:** PRD §5.2 item 1, §5.3.
+- **Given** an `openclaw`-type instance,
+- **When** a turn streams through `OpenClawBackend`,
+- **Then** it spawns `openclaw acp` (with `--url`/`--token` + `OPENCLAW_GATEWAY_TOKEN` when a gateway is configured), emits a `("session", id)` event, then forwards the same `AgentEvent` shapes as the Hermes backends,
+- **And** no `("reasoning", …)` events appear — OpenClaw's stdio bridge does not emit thought frames (documented capability gap, PRD §5.3),
+- **And** a prior `session_id` resumes via `load_session`.
+- **Test:** pytest unit — `tests/backend/agents/test_openclaw.py`.
+
 #### AC-W2-U1: Instance creation UI exposes a type selector
 
 - **Maps to:** PRD §5.2 item 2.
@@ -308,7 +317,7 @@ Open questions resolved by the OpenClaw spike — see PRD §5.3.
 - **And** submitting posts `{id, label, type, transport, transport_config}` to `POST /api/agents`.
 - **Test:** Vitest — `frontend/src/components/__tests__/new-agent-dialog.test.tsx`.
 
-- **AC-W2-D1 (draft):** Multiple instances of different types coexist and resume correctly. *(Coexistence is satisfied by the registry + creation UI; native-session resume for `openclaw` lands with AC-W2-A2 in Slice 3.)*
+- **AC-W2-D1 (draft):** Multiple instances of different types coexist and resume correctly. *(Coexistence is satisfied by the registry + creation UI; per-type native-session resume is unit-covered — `hermes` and `openclaw` both `load_session` on a prior id. Resume against a real OpenClaw Gateway is manual `/verify`.)*
 - **AC-W2-H1 (draft):** Host mode supports `openclaw` runners alongside `hermes acp`.
 - **AC-W2-DOC1 (draft):** `/add-agent-backend` Claude skill produces a working backend for a new agent type in one session.
 
