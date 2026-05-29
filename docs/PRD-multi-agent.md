@@ -348,19 +348,48 @@ runs. AC-W2-A1 requires the backend dispatch to move from a hardcoded
 `if/elif` to a `type → backend` registry so a new type needs only a new
 `AgentBackend` subclass plus one registry entry.
 
-**Known integration risk (to validate during Slice 3):** the `openclaw acp`
-stdio bridge has **no headless approve-all flag** (only the `acpx` harness
-exposes `permissionMode=approve-all`). The allowlist auto-approves read/search
-tools, but exec/mutating tools prompt — which a non-TTY subprocess cannot
-answer (the same failure class as the Hermes `HERMES_ACCEPT_HOOKS` fix). If
-this blocks, the fallback is to drive OpenClaw via `acpx` or document the
-limitation.
+**Confirmed limitations (deep repo + protocol dig, 2026-05-29).** A second,
+in-depth pass (Gateway protocol reference + `openclaw`/`acpx` repos and issue
+tracker) tried to close the three integration gaps by working with OpenClaw's
+real architecture. **All three are confirmed not closeable from our
+integration path today** — they are upstream limitations, two of them
+explicitly rejected by the project:
+
+1. **No reasoning/thought frames.** The Gateway WS protocol exposes no
+   thinking/plan event in any stable release. A `caps:["thinking-events"]` /
+   `stream:"thinking"` proposal was *closed as not planned*
+   (openclaw/openclaw#48995). Subscribing to the Gateway WS directly does not
+   recover them — they don't exist as events, the bridge isn't filtering them.
+
+2. **No per-session system prompt.** OpenClaw injects the system prompt from
+   *workspace* bootstrap files (`AGENTS.md`/`SOUL.md`) whose location is fixed
+   by gateway config (`agents.defaults.workspace`) and is **separate from the
+   ACP session `cwd`** (`runtime.acp.cwd` is "independent from workspace").
+   Writing `AGENTS.md` into the `cwd` we pass to `session/new` does nothing
+   (openclaw/openclaw#40825, #42471) — so the Hermes AGENTS.md trick does not
+   transfer. There is no `systemPrompt`/`instructions` field on `session/new`
+   or `sessions_spawn`. `systemPromptFile` config was *closed as not planned*
+   (#36190). `OpenClawBackend` therefore accepts `system_prompt_override` but
+   leaves it inert (documented, not silently dropped).
+
+3. **No headless tool auto-approval.** The `openclaw acp` bridge enforces a
+   hard-coded allowlist (scoped reads + readonly search); exec/mutating tools
+   always prompt — *"This ACP bridge policy is separate from ACPX harness
+   permissions."* Three would-be fixes are dead for our path: the gateway
+   `plugins.entries.acpx.config.permissionMode=approve-all` governs only the
+   acpx harness, not stdio-bridge sessions; `acpx` is a **client**, not a
+   stdio agent server, so we cannot interpose it; per-binding `permissionMode`
+   for ACP sessions is an *open* request (#40332). Net: an OpenClaw turn that
+   triggers an exec/mutating tool will block headlessly until upstream ships a
+   knob. (Contrast: Hermes solved the equivalent with `HERMES_ACCEPT_HOOKS`.)
 
 **Install/runtime preconditions:** `npm install -g openclaw@latest` and a
 running Gateway daemon (`openclaw onboard --install-daemon`, local default
 `http://127.0.0.1:18789`). Auth via `OPENCLAW_GATEWAY_TOKEN` / `--token-file`.
 
-Refs: <https://docs.openclaw.ai/cli/acp>, <https://docs.openclaw.ai/gateway/protocol>.
+Refs: <https://docs.openclaw.ai/cli/acp>, <https://docs.openclaw.ai/gateway/protocol>,
+<https://docs.openclaw.ai/gateway/config-agents>, <https://github.com/openclaw/acpx>,
+issues openclaw/openclaw#48995, #40825, #42471, #36190, #40332.
 
 ---
 

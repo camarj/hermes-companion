@@ -229,9 +229,12 @@ async def spawn_openclaw_acp(
     `token` is also exported as `OPENCLAW_GATEWAY_TOKEN` so file/env auth paths
     work too.
 
-    Note (known gap, PRD §5.3): the stdio bridge has no headless approve-all
-    flag — exec/mutating tools prompt and a non-TTY subprocess cannot answer
-    them. Read/search tools auto-approve via OpenClaw's allowlist.
+    Note (confirmed limitation, PRD §5.3): the stdio bridge has a hard-coded
+    allowlist (scoped reads + readonly search auto-approve); exec/mutating
+    tools always prompt and a non-TTY subprocess cannot answer them. There is
+    no headless override for this path — the gateway `permissionMode` governs
+    only the acpx harness, and acpx is a client (cannot be interposed as a
+    stdio agent). Such a turn will block until OpenClaw ships a knob.
     """
     import os
 

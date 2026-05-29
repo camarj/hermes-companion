@@ -4,14 +4,19 @@ OpenClaw speaks ACP over stdio via `openclaw acp`, the same shape as
 `hermes acp`, so this backend reuses `acp_client` and mirrors
 `LocalAcpBackend`'s flow with a different spawn command + gateway auth.
 
-Two intentional differences from the Hermes backend:
+Two intentional differences from the Hermes backend (both confirmed against
+the OpenClaw protocol/repo, 2026-05-29 — see PRD §5.3 for citations):
   * **No reasoning frames.** OpenClaw's stdio bridge emits text + `tool_call`
     but not thought/plan updates, so no `("reasoning", …)` events appear. The
-    UI already degrades gracefully (no thinking block).
-  * **system_prompt_override is not yet applied.** The Hermes backend
-    materializes AGENTS.md in the session cwd, which is Hermes-specific.
-    OpenClaw manages its own prompt/config, so the override is accepted but
-    inert for now — a documented capability gap, not a silent drop.
+    Gateway WS exposes no thinking event either (the feature was closed as not
+    planned upstream). The UI already degrades gracefully (no thinking block).
+  * **system_prompt_override is inert.** OpenClaw DOES read AGENTS.md/SOUL.md,
+    but from the gateway-configured *workspace* (`agents.defaults.workspace`),
+    which is separate from the ACP session `cwd` — so the Hermes trick of
+    materializing AGENTS.md in the session cwd does nothing here, and there is
+    no per-session system-prompt field on `session/new`. The override is
+    accepted (the registry passes it uniformly) but not applied — documented,
+    not silently dropped.
 """
 
 from __future__ import annotations

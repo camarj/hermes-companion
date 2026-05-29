@@ -303,8 +303,9 @@ Open questions resolved by the OpenClaw spike — see PRD §5.3.
 - **Given** an `openclaw`-type instance,
 - **When** a turn streams through `OpenClawBackend`,
 - **Then** it spawns `openclaw acp` (with `--url`/`--token` + `OPENCLAW_GATEWAY_TOKEN` when a gateway is configured), emits a `("session", id)` event, then forwards the same `AgentEvent` shapes as the Hermes backends,
-- **And** no `("reasoning", …)` events appear — OpenClaw's stdio bridge does not emit thought frames (documented capability gap, PRD §5.3),
+- **And** no `("reasoning", …)` events appear — OpenClaw's stdio bridge does not emit thought frames,
 - **And** a prior `session_id` resumes via `load_session`.
+- **Confirmed upstream limitations** (deep dig 2026-05-29, cited in PRD §5.3): no reasoning frames, no per-session system prompt (`system_prompt_override` is accepted but inert), and no headless tool auto-approval for the stdio bridge. These are OpenClaw constraints, not gaps in this backend.
 - **Test:** pytest unit — `tests/backend/agents/test_openclaw.py`.
 
 #### AC-W2-U1: Instance creation UI exposes a type selector
