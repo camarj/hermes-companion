@@ -76,8 +76,10 @@ async def test_local_acp_round_trips_query_with_streaming():
     events = [ev async for ev in backend.stream("ping", ctx)]
 
     # cwd event is emitted first (AC-W3-A1), then session (AC-W1-D4), then payload.
-    assert events == [
-        ("cwd", "/tmp"),
+    assert events[0][0] == "cwd"          # cwd event first
+    assert isinstance(events[0][1], str)  # cwd is an isolated dir (not "/tmp")
+    assert events[0][1] != "/tmp"
+    assert events[1:] == [
         ("session", "fake-session-id"),
         ("reasoning", "thinking"),
         ("text", "hello"),
@@ -209,8 +211,11 @@ async def test_local_acp_emits_session_event_at_start_of_stream():
 
     events = [ev async for ev in backend.stream("q", ctx)]
 
-    # cwd event first (AC-W3-A1), then session id (AC-W1-D4), then payload.
-    assert events[0] == ("cwd", "/tmp")
+    # cwd event first (AC-W3-A1) — now an isolated mkdtemp, not "/tmp".
+    assert events[0][0] == "cwd"
+    assert isinstance(events[0][1], str)
+    assert events[0][1] != "/tmp"
+    # then session id (AC-W1-D4), then payload.
     assert events[1] == ("session", "fake-session-id")
     assert events[2:] == [
         ("reasoning", "thinking"),
@@ -228,7 +233,9 @@ async def test_local_acp_calls_new_session_when_no_prior_id():
         pass
 
     assert factory.captured["client"].loaded_session_id is None
-    assert factory.captured["client"].session_cwd == "/tmp"
+    # cwd is an isolated mkdtemp (not "/tmp") when no conversation workdir is given.
+    assert factory.captured["client"].session_cwd is not None
+    assert factory.captured["client"].session_cwd != "/tmp"
 
 
 async def test_local_acp_calls_load_session_when_context_has_session_id():
@@ -286,9 +293,12 @@ async def test_local_acp_uses_configured_cwd_when_no_system_prompt():
 
 
 async def test_local_acp_empty_override_does_not_materialize_dir():
-    """Empty string / whitespace shouldn't create a tmpdir."""
+    """Empty string / whitespace override must not create an AGENTS.md subdir —
+    the session cwd should be the base workdir directly (or an isolated mkdtemp)."""
     factory = _make_factory([("done", None)])
+    cwd = "/some/custom/path"
     backend = LocalAcpBackend(
+        cwd=cwd,
         client_factory=factory,
         system_prompt_override="   ",
     )
@@ -297,7 +307,8 @@ async def test_local_acp_empty_override_does_not_materialize_dir():
     async for _ in backend.stream("q", ctx):
         pass
 
-    assert factory.captured["client"].session_cwd == "/tmp"
+    # No sub-tmpdir created; session cwd is the configured base path.
+    assert factory.captured["client"].session_cwd == cwd
 
 
 # ── AC-W3-A1: cwd emission ────────────────────────────────────────────────

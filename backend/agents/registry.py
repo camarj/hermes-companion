@@ -14,7 +14,7 @@ single-Hermes setups keep working (back-compat).
 from __future__ import annotations
 
 import os
-from typing import Callable
+from typing import Callable, Optional
 
 from agents.base import AgentBackend
 from agents.local_acp import LocalAcpBackend
@@ -43,30 +43,46 @@ def registered_local_types() -> list[str]:
     return sorted(_LOCAL_BACKENDS)
 
 
-def build_local_backend(agent: dict) -> AgentBackend:
-    """Build the local backend for an agent instance dict, by its `type`."""
+def build_local_backend(agent: dict, *, cwd: Optional[str] = None) -> AgentBackend:
+    """Build the local backend for an agent instance dict, by its `type`.
+
+    When `cwd` is provided it is forwarded to the factory so the backend uses
+    the per-conversation managed workdir instead of an isolated mkdtemp.
+    Factories that do not accept `cwd` (e.g. custom third-party registrations)
+    are called without it — they retain their own isolation behaviour.
+    """
     agent_type = (agent.get("type") or _FALLBACK_TYPE).lower()
     factory = _LOCAL_BACKENDS.get(agent_type) or _LOCAL_BACKENDS[_FALLBACK_TYPE]
+    if cwd is not None:
+        try:
+            return factory(agent, cwd=cwd)
+        except TypeError:
+            pass
     return factory(agent)
 
 
 # ── Built-in registrations ──────────────────────────────────────────────────
-register_local_backend(
-    "hermes",
-    lambda agent: LocalAcpBackend(
-        system_prompt_override=agent.get("system_prompt_override")
-    ),
-)
+def _build_hermes(agent: dict, *, cwd: Optional[str] = None) -> AgentBackend:
+    kwargs: dict = {"system_prompt_override": agent.get("system_prompt_override")}
+    if cwd is not None:
+        kwargs["cwd"] = cwd
+    return LocalAcpBackend(**kwargs)
 
 
-def _build_openclaw(agent: dict) -> AgentBackend:
+register_local_backend("hermes", _build_hermes)
+
+
+def _build_openclaw(agent: dict, *, cwd: Optional[str] = None) -> AgentBackend:
     cfg = agent.get("transport_config") or {}
     raw_token = cfg.get("token") or ""
-    return OpenClawBackend(
-        gateway_url=cfg.get("url") or None,
-        gateway_token=resolve_token(raw_token) or None,
-        system_prompt_override=agent.get("system_prompt_override"),
-    )
+    kwargs: dict = {
+        "gateway_url": cfg.get("url") or None,
+        "gateway_token": resolve_token(raw_token) or None,
+        "system_prompt_override": agent.get("system_prompt_override"),
+    }
+    if cwd is not None:
+        kwargs["cwd"] = cwd
+    return OpenClawBackend(**kwargs)
 
 
 register_local_backend("openclaw", _build_openclaw)

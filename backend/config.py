@@ -311,6 +311,20 @@ def data_dir() -> Path:
     return Path(__file__).parent / "data"
 
 
+def workdir_for_conversation(conversation_id: str) -> Path:
+    """Return a stable, isolated working directory for `conversation_id`.
+
+    Path: DATA_DIR/workdirs/<conversation_id>
+
+    Created on first call (parents=True, exist_ok=True). All turns in the same
+    conversation share this directory so artifacts accumulate across turns while
+    remaining isolated from other conversations and from the shared /tmp root.
+    """
+    wd = data_dir() / "workdirs" / conversation_id
+    wd.mkdir(parents=True, exist_ok=True)
+    return wd
+
+
 # ── Env helpers ─────────────────────────────────────────────────────────────
 
 def load_dotenv_if_present() -> None:

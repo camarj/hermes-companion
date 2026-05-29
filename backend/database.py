@@ -387,6 +387,7 @@ def update_conversation_session_id(conv_id: str, session_id: str) -> bool:
 
 
 def delete_conversation(conv_id: str) -> bool:
+    from config import workdir_for_conversation as _workdir_for_conversation
     conn = get_db()
     try:
         file_paths = [
@@ -402,6 +403,10 @@ def delete_conversation(conv_id: str) -> bool:
                 os.unlink(fp)
             except OSError:
                 pass
+        # FIX 1: also remove the per-conversation managed workdir if it exists.
+        workdir = _data_dir() / "workdirs" / conv_id
+        if workdir.is_dir():
+            shutil.rmtree(workdir, ignore_errors=True)
         return cursor.rowcount > 0
     finally:
         conn.close()

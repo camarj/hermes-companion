@@ -61,14 +61,15 @@ def _make_factory(events: list):
 
 async def test_openclaw_round_trips_query_and_emits_session_first():
     factory = _make_factory([("text", "hi from openclaw"), ("done", None)])
-    backend = OpenClawBackend(client_factory=factory)
+    cwd = "/some/conv/workdir"
+    backend = OpenClawBackend(cwd=cwd, client_factory=factory)
     ctx = TurnContext(user_id="alice", user_name="Alice")
 
     events = [ev async for ev in backend.stream("ping", ctx)]
 
     # cwd event first (AC-W3-A1), then session, then payload.
     assert events == [
-        ("cwd", "/tmp"),
+        ("cwd", cwd),
         ("session", "oc-session"),
         ("text", "hi from openclaw"),
         ("done", None),

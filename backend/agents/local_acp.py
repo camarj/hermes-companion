@@ -50,23 +50,31 @@ class LocalAcpBackend(AgentBackend):
     def __init__(
         self,
         *,
-        cwd: str = "/tmp",
+        cwd: Optional[str] = None,
         client_factory: AcpClientFactory | None = None,
         system_prompt_override: Optional[str] = None,
     ) -> None:
-        self._cwd = cwd
+        # When no cwd is supplied (e.g. fallback path with no conversation_id),
+        # create an isolated tmpdir so we never land in the shared /tmp root.
+        self._cwd = cwd if cwd is not None else tempfile.mkdtemp(prefix="hermes-companion-local-")
         self._system_prompt = system_prompt_override
         # Default to the real spawn; tests pass an asynccontextmanager fake.
         self._client_factory: AcpClientFactory = client_factory or spawn_hermes_acp
 
     def _resolve_session_cwd(self) -> str:
-        """Materialize AGENTS.md in a fresh tmpdir when an override is set
-        (AC-W1-U5). Hermes reads AGENTS.md from the session cwd as part of
-        its prompt builder — that's the only knob it respects for an
-        external system prompt. Otherwise use the configured cwd."""
+        """Materialize AGENTS.md inside the configured cwd when an override is set
+        (AC-W1-U5). Hermes reads AGENTS.md from the session cwd as part of its
+        prompt builder — that's the only knob it respects for an external system
+        prompt.
+
+        When a system_prompt_override is present we create a per-session subdir
+        inside self._cwd so the AGENTS.md is isolated per-turn while still living
+        under the conversation-scoped workdir (FIX 1). When no override is set we
+        use self._cwd directly.
+        """
         if not self._system_prompt or not self._system_prompt.strip():
             return self._cwd
-        session_dir = Path(tempfile.mkdtemp(prefix="hermes-companion-local-"))
+        session_dir = Path(tempfile.mkdtemp(prefix="hermes-companion-local-", dir=self._cwd))
         (session_dir / "AGENTS.md").write_text(
             self._system_prompt, encoding="utf-8",
         )
