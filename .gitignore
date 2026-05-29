@@ -31,6 +31,9 @@ CLAUDE.local.md
 *.sqlite
 *.sqlite3
 
+# Artifact data directory (server-managed files, not code)
+backend/data/
+
 # TLS certs
 certs/
 *.pem
