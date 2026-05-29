@@ -191,6 +191,9 @@ async def spawn_hermes_acp(
     proc_env = os.environ.copy()
     if env:
         proc_env.update(env)
+    # Non-TTY subprocess: auto-approve shell-hook prompts or hermes acp blocks
+    # forever on the first one (legacy `hermes chat --yolo` did this implicitly).
+    proc_env.setdefault("HERMES_ACCEPT_HOOKS", "1")
     proc = await asyncio.create_subprocess_exec(
         "hermes",
         "acp",
