@@ -280,8 +280,8 @@ async def test_call_agent_stream_skips_persist_when_session_id_unchanged(monkeyp
 
 # ── AC-W3-A1: _snapshot_dir helper ────────────────────────────────────────
 
-def test_snapshot_dir_returns_rel_path_mtime_size_dict(tmp_path):
-    """_snapshot_dir returns {rel_path: (mtime, size)} for all files in tree."""
+def test_snapshot_dir_returns_rel_path_mtime_size_hash_tuple(tmp_path):
+    """_snapshot_dir returns {rel_path: (mtime, size, sha256_hex)} for all files."""
     (tmp_path / "a.txt").write_text("hello")
     sub = tmp_path / "sub"
     sub.mkdir()
@@ -293,10 +293,11 @@ def test_snapshot_dir_returns_rel_path_mtime_size_dict(tmp_path):
     assert "sub/b.txt" in snapshot or str(Path("sub") / "b.txt") in snapshot
 
     entry = snapshot["a.txt"]
-    assert isinstance(entry, tuple) and len(entry) == 2
-    mtime, size = entry
+    assert isinstance(entry, tuple) and len(entry) == 3
+    mtime, size, sha = entry
     assert isinstance(mtime, float)
     assert size == 5
+    assert isinstance(sha, str) and len(sha) == 64  # SHA-256 hex
 
 
 def test_snapshot_dir_empty_returns_empty_dict(tmp_path):

@@ -15,6 +15,7 @@ NULL `agent_id` fall back to a local `hermes acp` subprocess (AC-W1-B1).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import mimetypes
 import os
 from pathlib import Path
@@ -24,7 +25,7 @@ from agents.base import AgentBackend, AgentEvent, TurnContext
 from agents.local_acp import LocalAcpBackend
 from agents.registry import build_local_backend, resolve_token
 from agents.remote_acp import RemoteAcpBackend
-from config import agent_enabled
+from config import agent_enabled, workdir_for_conversation
 from database import (
     create_artifact,
     get_agent_instance,
@@ -34,13 +35,16 @@ from database import (
 )
 
 
-def _snapshot_dir(path: str) -> dict[str, tuple[float, int]]:
-    """Return {rel_path: (mtime, size)} for every file under `path`.
+def _snapshot_dir(path: str) -> dict[str, tuple[float, int, str]]:
+    """Return {rel_path: (mtime, size, sha256_hex)} for every file under `path`.
+
+    The content hash is computed up-front so that _scan_new_artifacts can detect
+    same-second in-place overwrites with identical byte counts (FIX 3).
 
     Runs synchronously; wrap in asyncio.to_thread when calling from async code.
     Returns an empty dict when the directory doesn't exist or is empty.
     """
-    result: dict[str, tuple[float, int]] = {}
+    result: dict[str, tuple[float, int, str]] = {}
     root = Path(path)
     if not root.is_dir():
         return result
@@ -49,33 +53,47 @@ def _snapshot_dir(path: str) -> dict[str, tuple[float, int]]:
             full = Path(dirpath) / fname
             try:
                 st = full.stat()
+                data = full.read_bytes()
                 rel = str(full.relative_to(root))
-                result[rel] = (st.st_mtime, st.st_size)
+                result[rel] = (st.st_mtime, st.st_size, _content_hash(data))
             except OSError:
                 pass
     return result
 
 
+def _content_hash(data: bytes) -> str:
+    """Return a SHA-256 hex digest used to detect same-size content changes."""
+    return hashlib.sha256(data).hexdigest()
+
+
 def _scan_new_artifacts(
     cwd: str,
-    pre_snapshot: dict[str, tuple[float, int]],
+    pre_snapshot: dict[str, tuple[float, int, str]],
 ) -> list[dict]:
     """Diff post-turn cwd state against pre_snapshot.
 
-    Returns a list of dicts for files that are NEW or MODIFIED (by size or
-    mtime). Each dict has: name, rel_path, mime_type, size_bytes, content_bytes.
+    Returns a list of dicts for files that are NEW or MODIFIED.
+    Each dict has: name, rel_path, mime_type, size_bytes, content_bytes.
+
+    When both mtime and size match the pre-snapshot entry (ambiguous on
+    filesystems with ~1 s mtime granularity), content hashes are compared so
+    that a same-second in-place overwrite with identical byte count is not
+    silently missed (FIX 3).
 
     Runs synchronously; wrap in asyncio.to_thread when calling from async code.
     """
     post_snapshot = _snapshot_dir(cwd)
     results: list[dict] = []
     root = Path(cwd)
-    for rel_path, (post_mtime, post_size) in post_snapshot.items():
+    for rel_path, (post_mtime, post_size, post_hash) in post_snapshot.items():
         pre_entry = pre_snapshot.get(rel_path)
         if pre_entry is not None:
-            pre_mtime, pre_size = pre_entry
+            pre_mtime, pre_size, pre_hash = pre_entry
             if post_mtime == pre_mtime and post_size == pre_size:
-                continue
+                # (mtime, size) tie — use content hash to break the ambiguity.
+                if post_hash == pre_hash:
+                    continue  # truly unchanged
+                # Same mtime+size but different content — fall through to capture.
         full = root / rel_path
         try:
             content_bytes = full.read_bytes()
@@ -98,25 +116,31 @@ def _resolve_backend(conversation_id: Optional[str]) -> AgentBackend:
     """Pick the right AgentBackend for this turn.
 
     Resolution order:
-      1. No conversation_id (voice without conversation, legacy callers) → Local.
-      2. Conversation row missing or its agent_id is NULL → Local (AC-W1-B1).
+      1. No conversation_id (voice without conversation, legacy callers) → Local,
+         with an isolated mkdtemp cwd (never the shared /tmp root — FIX 1).
+      2. Conversation row missing or its agent_id is NULL → Local (AC-W1-B1),
+         with the per-conversation managed workdir when conversation_id is known.
       3. agent_instance.transport == "remote-acp" → RemoteAcpBackend, with
          token resolved via `_resolve_token()` (type-agnostic — the host runs
          whatever CLI it was provisioned with).
       4. Otherwise (local-acp / default) → the registry picks the backend by
-         the instance `type` (AC-W2-A1). Adding a type needs no change here.
+         the instance `type` (AC-W2-A1), with the per-conversation workdir
+         injected via `cwd` so artifact capture is isolated (FIX 1).
     """
     if not conversation_id:
+        # No conversation context — LocalAcpBackend() defaults to an isolated mkdtemp.
         return LocalAcpBackend()
+
+    cwd = str(workdir_for_conversation(conversation_id))
 
     conv = get_conversation(conversation_id)
     agent_id = conv.get("agent_id") if conv else None
     if not agent_id:
-        return LocalAcpBackend()
+        return LocalAcpBackend(cwd=cwd)
 
     agent = get_agent_instance(agent_id)
     if not agent:
-        return LocalAcpBackend()
+        return LocalAcpBackend(cwd=cwd)
 
     transport = agent.get("transport")
     if transport == "remote-acp":
@@ -126,7 +150,7 @@ def _resolve_backend(conversation_id: Optional[str]) -> AgentBackend:
             token=resolve_token(cfg.get("token", "")),
             system_prompt_override=agent.get("system_prompt_override"),
         )
-    return build_local_backend(agent)
+    return build_local_backend(agent, cwd=cwd)
 
 
 _DISABLED_MESSAGE = (
@@ -190,7 +214,7 @@ async def call_agent_stream(
     print(f"{log_prefix} stream user={user_id} query={query[:80]!r}")
 
     cwd: str | None = None
-    pre_snapshot: dict[str, tuple[float, int]] = {}
+    pre_snapshot: dict[str, tuple[float, int, str]] = {}
 
     async for kind, payload in backend.stream(query, context, image_paths=image_paths):
         if kind == "done":
@@ -213,7 +237,11 @@ async def call_agent_stream(
         new_files = await asyncio.to_thread(_scan_new_artifacts, cwd, pre_snapshot)
         for file_info in new_files:
             try:
-                artifact = create_artifact(
+                # FIX 2: wrap persist (mkdir + write_bytes for large files) in
+                # to_thread so disk I/O never stalls audio forwarding on the
+                # voice path.
+                artifact = await asyncio.to_thread(
+                    create_artifact,
                     name=file_info["name"],
                     rel_path=file_info["rel_path"],
                     content_bytes=file_info["content_bytes"],
