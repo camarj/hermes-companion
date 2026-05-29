@@ -2,6 +2,7 @@ import type {
   AgentInstance,
   AppConfig,
   Conversation,
+  CreateAgentPayload,
   KnownPerson,
   Message,
   User,
@@ -78,6 +79,13 @@ export const api = {
 
   listAgents: () =>
     request<{ agents: AgentInstance[] }>("/api/agents").then((r) => r.agents),
+
+  createAgent: (payload: CreateAgentPayload) =>
+    request<AgentInstance>("/api/agents", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" },
+    }),
 
   // ── Per-agent inspection (AC-W1-U4 frontend) ────────────────────────────
 

@@ -298,8 +298,17 @@ Open questions resolved by the OpenClaw spike — see PRD §5.3.
 - **Test:** pytest unit — `tests/backend/agents/test_registry.py`.
 
 - **AC-W2-A2 (draft):** `OpenClawBackend` round-trips a query with streaming, emitting the same `AgentEvent` shapes as Hermes backends (no reasoning frames — OpenClaw's stdio bridge does not emit them; see PRD §5.3).
-- **AC-W2-U1 (draft):** Instance creation UI exposes a type selector (`hermes`, `openclaw`, `custom`).
-- **AC-W2-D1 (draft):** Multiple instances of different types coexist and resume correctly.
+#### AC-W2-U1: Instance creation UI exposes a type selector
+
+- **Maps to:** PRD §5.2 item 2.
+- **Given** the user opens the "Add agent" dialog,
+- **When** the form renders,
+- **Then** a type selector lists `hermes`, `openclaw`, and `custom`,
+- **And** choosing `remote-acp` transport reveals URL + token fields (hidden for local),
+- **And** submitting posts `{id, label, type, transport, transport_config}` to `POST /api/agents`.
+- **Test:** Vitest — `frontend/src/components/__tests__/new-agent-dialog.test.tsx`.
+
+- **AC-W2-D1 (draft):** Multiple instances of different types coexist and resume correctly. *(Coexistence is satisfied by the registry + creation UI; native-session resume for `openclaw` lands with AC-W2-A2 in Slice 3.)*
 - **AC-W2-H1 (draft):** Host mode supports `openclaw` runners alongside `hermes acp`.
 - **AC-W2-DOC1 (draft):** `/add-agent-backend` Claude skill produces a working backend for a new agent type in one session.
 

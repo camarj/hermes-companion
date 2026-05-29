@@ -4,6 +4,7 @@ import { toast } from "sonner"
 import { AgentSettings } from "@/components/agent-settings"
 import { Sidebar } from "@/components/sidebar"
 import { NewConversationDialog } from "@/components/new-conversation-dialog"
+import { NewAgentDialog } from "@/components/new-agent-dialog"
 import { SettingsPanel } from "@/components/settings-panel"
 import { ChatView } from "@/components/chat/chat-view"
 import { CameraPanel } from "@/components/voice/camera-panel"
@@ -17,6 +18,7 @@ import { api } from "@/lib/api"
 import { t } from "@/lib/i18n"
 import type {
   AppConfig,
+  CreateAgentPayload,
   Settings,
   ThemeMode,
   User,
@@ -43,6 +45,7 @@ export function AppShell({
   const [activeId, setActiveId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [addAgentOpen, setAddAgentOpen] = useState(false)
   const [agentSettingsId, setAgentSettingsId] = useState<string | null>(null)
   const { conversations, refresh, remove } = useConversations(true)
   const { agents, refresh: refreshAgents } = useAgents()
@@ -66,6 +69,19 @@ export function AppShell({
       }
     },
     [refresh],
+  )
+
+  const handleCreateAgent = useCallback(
+    async (payload: CreateAgentPayload) => {
+      try {
+        await api.createAgent(payload)
+        await refreshAgents()
+        setAddAgentOpen(false)
+      } catch {
+        toast.error(i.createAgentFailed)
+      }
+    },
+    [refreshAgents, i.createAgentFailed],
   )
 
   const handleNew = useCallback(() => {
@@ -134,6 +150,7 @@ export function AppShell({
         }}
         onLogout={onLogout}
         onOpenAgentSettings={(agentId) => setAgentSettingsId(agentId)}
+        onAddAgent={() => setAddAgentOpen(true)}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -212,6 +229,13 @@ export function AppShell({
         lang={lang}
         onSelect={(id) => void startConversationWithAgent(id)}
         onCancel={() => setPickerOpen(false)}
+      />
+
+      <NewAgentDialog
+        open={addAgentOpen}
+        lang={lang}
+        onCreate={handleCreateAgent}
+        onCancel={() => setAddAgentOpen(false)}
       />
 
       <AgentSettings

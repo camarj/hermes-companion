@@ -27,6 +27,7 @@ type SidebarProps = {
   onLogout: () => void
   onToggle?: () => void
   onOpenAgentSettings?: (agentId: string) => void
+  onAddAgent?: () => void
 }
 
 type AgentGroup = {
@@ -108,6 +109,7 @@ export function Sidebar({
   onLogout,
   onToggle,
   onOpenAgentSettings,
+  onAddAgent,
 }: SidebarProps) {
   const i = t(lang)
   const [pendingDelete, setPendingDelete] = useState<Conversation | null>(null)
@@ -218,6 +220,16 @@ export function Sidebar({
             <Plus className="h-3.5 w-3.5" />
             <span>{i.newConversation}</span>
           </button>
+          {onAddAgent && (
+            <button
+              type="button"
+              onClick={onAddAgent}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-mono uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Plus className="h-3 w-3" />
+              <span>{i.addAgent}</span>
+            </button>
+          )}
         </div>
 
         {/* Current user pill */}
