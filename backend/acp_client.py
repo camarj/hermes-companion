@@ -214,6 +214,56 @@ async def spawn_hermes_acp(
         await proc.wait()
 
 
+@asynccontextmanager
+async def spawn_openclaw_acp(
+    *,
+    env: dict[str, str] | None = None,
+    url: str | None = None,
+    token: str | None = None,
+) -> AsyncIterator[AcpClient]:
+    """Spawn `openclaw acp` and yield a connected client. Cleans up on exit.
+
+    OpenClaw speaks ACP over stdio just like Hermes (PRD §5.3). When `url`/
+    `token` are given they target a remote Gateway (`openclaw acp --url …
+    --token …`); otherwise the bridge talks to the local Gateway daemon.
+    `token` is also exported as `OPENCLAW_GATEWAY_TOKEN` so file/env auth paths
+    work too.
+
+    Note (known gap, PRD §5.3): the stdio bridge has no headless approve-all
+    flag — exec/mutating tools prompt and a non-TTY subprocess cannot answer
+    them. Read/search tools auto-approve via OpenClaw's allowlist.
+    """
+    import os
+
+    proc_env = os.environ.copy()
+    if env:
+        proc_env.update(env)
+    if token:
+        proc_env.setdefault("OPENCLAW_GATEWAY_TOKEN", token)
+    args = ["openclaw", "acp"]
+    if url:
+        args += ["--url", url]
+    if token:
+        args += ["--token", token]
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=proc_env,
+    )
+    try:
+        assert proc.stdin is not None and proc.stdout is not None
+        client = AcpClient(proc.stdout, proc.stdin)
+        yield client
+    finally:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        await proc.wait()
+
+
 async def stream_query(query: str, cwd: str = "/tmp") -> AsyncIterator[AgentEvent]:
     """High-level convenience: spawn hermes acp, run one turn, yield events."""
     async with spawn_hermes_acp() as client:

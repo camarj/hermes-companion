@@ -13,12 +13,21 @@ single-Hermes setups keep working (back-compat).
 
 from __future__ import annotations
 
+import os
 from typing import Callable
 
 from agents.base import AgentBackend
 from agents.local_acp import LocalAcpBackend
+from agents.openclaw import OpenClawBackend
 
 LocalBackendFactory = Callable[[dict], AgentBackend]
+
+
+def resolve_token(raw: str) -> str:
+    """Resolve a token reference that may be a literal or `env:VAR_NAME`."""
+    if raw.startswith("env:"):
+        return os.environ.get(raw[len("env:") :], "")
+    return raw
 
 _LOCAL_BACKENDS: dict[str, LocalBackendFactory] = {}
 
@@ -48,3 +57,16 @@ register_local_backend(
         system_prompt_override=agent.get("system_prompt_override")
     ),
 )
+
+
+def _build_openclaw(agent: dict) -> AgentBackend:
+    cfg = agent.get("transport_config") or {}
+    raw_token = cfg.get("token") or ""
+    return OpenClawBackend(
+        gateway_url=cfg.get("url") or None,
+        gateway_token=resolve_token(raw_token) or None,
+        system_prompt_override=agent.get("system_prompt_override"),
+    )
+
+
+register_local_backend("openclaw", _build_openclaw)

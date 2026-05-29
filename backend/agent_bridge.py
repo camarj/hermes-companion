@@ -14,12 +14,11 @@ NULL `agent_id` fall back to a local `hermes acp` subprocess (AC-W1-B1).
 
 from __future__ import annotations
 
-import os
 from typing import AsyncIterator, Optional
 
 from agents.base import AgentBackend, AgentEvent, TurnContext
 from agents.local_acp import LocalAcpBackend
-from agents.registry import build_local_backend
+from agents.registry import build_local_backend, resolve_token
 from agents.remote_acp import RemoteAcpBackend
 from config import agent_enabled
 from database import (
@@ -28,13 +27,6 @@ from database import (
     get_conversation_session_id,
     update_conversation_session_id,
 )
-
-
-def _resolve_token(raw: str) -> str:
-    """Resolve a token reference that may be a literal or `env:VAR_NAME`."""
-    if raw.startswith("env:"):
-        return os.environ.get(raw[len("env:"):], "")
-    return raw
 
 
 def _resolve_backend(conversation_id: Optional[str]) -> AgentBackend:
@@ -66,7 +58,7 @@ def _resolve_backend(conversation_id: Optional[str]) -> AgentBackend:
         cfg = agent.get("transport_config") or {}
         return RemoteAcpBackend(
             url=cfg.get("url", ""),
-            token=_resolve_token(cfg.get("token", "")),
+            token=resolve_token(cfg.get("token", "")),
             system_prompt_override=agent.get("system_prompt_override"),
         )
     return build_local_backend(agent)
