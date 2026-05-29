@@ -111,6 +111,39 @@ def test_scan_new_artifacts_detects_png_mime_type(tmp_path: Path):
     assert results[0]["mime_type"].startswith("image/")
 
 
+# ── FIX 3: same-size content change is detected via hash ─────────────────
+
+def test_scan_new_artifacts_detects_same_size_content_change(tmp_path: Path):
+    """FIX 3: a file whose mtime+size are identical to the pre-snapshot but whose
+    content has changed (same-second overwrite, same number of bytes) must still
+    be reported as modified.
+
+    On high-resolution FS this rarely happens in production, but it is a real
+    failure mode: e.g. agent rewrites 'foo.txt' with a different 100-byte payload
+    within the same clock second.  We hash content in this ambiguous case.
+    """
+    target = tmp_path / "same_size.txt"
+    content_before = b"AAAAAAAA"
+    content_after  = b"BBBBBBBB"  # same length, different bytes
+
+    target.write_bytes(content_before)
+    pre_snapshot = agent_bridge._snapshot_dir(str(tmp_path))
+
+    # Overwrite with same-size content.  Forcibly set mtime equal to the
+    # pre-snapshot value so the (mtime, size) pair is identical — this
+    # simulates a same-second overwrite on a low-resolution filesystem.
+    target.write_bytes(content_after)
+    pre_mtime = pre_snapshot[target.name][0]
+    import os as _os
+    _os.utime(str(target), (pre_mtime, pre_mtime))
+
+    results = agent_bridge._scan_new_artifacts(str(tmp_path), pre_snapshot)
+    names = [r["name"] for r in results]
+    assert "same_size.txt" in names, (
+        "_scan_new_artifacts must detect same-mtime+size content change via hash"
+    )
+
+
 # ── Scenario 2: empty cwd → zero artifacts ────────────────────────────────
 
 def test_scan_new_artifacts_empty_cwd_returns_empty(tmp_path: Path):
@@ -262,6 +295,61 @@ async def test_call_agent_cwd_and_artifact_events_stripped_from_text_accumulatio
 
     result = await agent_bridge.call_agent("q", user_id="u1")
     assert result == "the answer"
+
+
+# ── FIX 2: create_artifact is wrapped in asyncio.to_thread ────────────────
+
+async def test_call_agent_stream_wraps_create_artifact_in_to_thread(
+    inited_db: Path, monkeypatch, tmp_path: Path
+):
+    """FIX 2: the create_artifact persist call must be off-loaded to a thread so
+    disk I/O never stalls the event loop on the voice path.  We verify by
+    substituting create_artifact with a spy that records whether it was called
+    from inside asyncio.to_thread (i.e. from a worker thread, not the event loop
+    thread).
+    """
+    import asyncio as _asyncio
+    import threading
+
+    cwd = str(tmp_path / "agent_cwd")
+    Path(cwd).mkdir()
+
+    data_root = tmp_path / "data"
+    monkeypatch.setattr("database._data_dir", lambda: data_root)
+
+    conv_id = _seed_conversation(inited_db)
+
+    backend = _CwdBackend(cwd=cwd, filename="result.txt", file_content=b"content")
+    monkeypatch.setattr(agent_bridge, "_resolve_backend", lambda c: backend)
+    monkeypatch.setattr(agent_bridge, "agent_enabled", lambda: True)
+    monkeypatch.setattr(agent_bridge, "get_conversation_session_id", lambda c: None)
+    monkeypatch.setattr(agent_bridge, "update_conversation_session_id", lambda *a: None)
+
+    event_loop_thread = threading.current_thread()
+    create_artifact_thread: list[threading.Thread] = []
+
+    real_create_artifact = database.create_artifact
+
+    def spy_create_artifact(**kwargs):
+        create_artifact_thread.append(threading.current_thread())
+        return real_create_artifact(**kwargs)
+
+    monkeypatch.setattr(agent_bridge, "create_artifact", spy_create_artifact)
+
+    events = [
+        ev async for ev in agent_bridge.call_agent_stream(
+            "write something", user_id="u1", conversation_id=conv_id
+        )
+    ]
+
+    artifact_events = [ev for ev in events if ev[0] == "artifact"]
+    assert len(artifact_events) == 1, "expected 1 artifact event"
+
+    assert len(create_artifact_thread) == 1, "create_artifact must have been called once"
+    assert create_artifact_thread[0] is not event_loop_thread, (
+        "create_artifact must run in a worker thread (via asyncio.to_thread), "
+        "not on the event loop thread — disk I/O must not block audio forwarding"
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
