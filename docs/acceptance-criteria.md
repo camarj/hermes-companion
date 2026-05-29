@@ -166,6 +166,16 @@ Tests are written **before** the code that satisfies the AC. See `CLAUDE.md` →
 - **And** no exception escapes to the FastAPI route.
 - **Test:** pytest integration — `tests/backend/agents/test_remote_acp_failure.py`.
 
+#### AC-W1-R6: Host provisioning seeds a bearer token idempotently
+
+- **Maps to:** PRD §3.2.1.
+- **Given** a target machine that already runs `hermes`,
+- **When** `python -m provision_host --label <name>` runs against a path with no `config.yaml`,
+- **Then** a `config.yaml` is written carrying a `host_tokens` entry under that label whose token is a freshly generated unguessable string (≥ 32 chars),
+- **And** re-running with the same label is idempotent — it reuses the existing token and adds no duplicate entry,
+- **And** the command reports the token plus the `wss://<host>/api/host/acp` URL and the host-mode launch command.
+- **Test:** pytest unit — `tests/backend/test_provision_host.py`.
+
 ### UI / multi-session UX
 
 #### AC-W1-U1: `/api/agents` CRUD works

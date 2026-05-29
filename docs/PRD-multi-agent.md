@@ -106,7 +106,11 @@ host-side endpoints. One binary, two roles.
 **Trade-off:** the host install pulls in the React UI assets it does not
 use. The cost is bytes on disk, not runtime overhead.
 
-#### 3.2.1. Open requirement: friendly host-mode provisioning (deferred)
+#### 3.2.1. Friendly host-mode provisioning (delivered)
+
+> **Status: delivered.** Shipped as `install-host.sh` (environment bootstrap)
+> + `python -m provision_host` (testable token/config core). Covered by
+> AC-W1-R6. The original deferred requirement is preserved below for context.
 
 The sidecar model is sound, but the *deployment ergonomics* are not yet
 solved. Today, standing up a remote host means a human SSHes into the box,
@@ -129,9 +133,9 @@ reachable remote agent" in a single step.
   bootstrap script, a published install script in the repo, or a Docker image
   for the host role. The script form (clone/pull + setup + token seed) is the
   current front-runner per the maintainer.
-- **Deferred — not Wave 1.** Wave 1 only requires that a remote declared in
-  `config.yaml` works; manual deployment is acceptable for that milestone.
-  This is a usability deliverable for a later wave.
+- **Originally deferred past Wave 1** (manual deployment was acceptable for the
+  Wave 1 milestone); pulled forward and delivered as a post-Wave-1 usability
+  follow-up via `install-host.sh` + `provision_host`.
 
 ### 3.3. Polymorphism via a documented `AgentBackend` interface
 
@@ -214,8 +218,8 @@ A single user, on a single browser, can:
 - Automatic reconnect / offline queue for downed remotes — future
   improvement.
 - Friendly host-mode provisioning (an install script that deploys the
-  companion sidecar onto a Hermes server) — deferred usability deliverable,
-  see §3.2.1.
+  companion sidecar onto a Hermes server) — was deferred past Wave 1, now
+  delivered as a follow-up; see §3.2.1.
 
 ### 4.3. Key design decisions
 

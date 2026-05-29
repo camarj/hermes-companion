@@ -92,7 +92,20 @@ polymorphism seam. The `/add-agent-backend` Claude skill walks both paths
 
 To serve one hermes-companion's agent from another machine (a VPS, a Tailscale
 node), run the remote box in **host mode** — it exposes only the `/api/host/*`
-bridge and nothing client-facing:
+bridge and nothing client-facing.
+
+**One command (on the Hermes box):** `install-host.sh` pulls the repo, builds a
+venv, installs the backend deps, seeds a bearer token, and prints the token,
+the `wss://…/api/host/acp` URL, and the launch command:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/camarj/hermes-companion/main/install-host.sh \
+  | bash -s -- --label vps-prod --host my-host.example.com --port 443
+```
+
+It provisions the **sidecar only** — `hermes` must already be installed on the
+box — and it does not start the server; copy the printed `HERMES_COMPANION_MODE=host`
+command to launch. The manual equivalent, step by step:
 
 1. **On the host**, declare one or more bearer tokens in `config.yaml`:
 
