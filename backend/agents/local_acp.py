@@ -82,6 +82,7 @@ class LocalAcpBackend(AgentBackend):
         env = _build_env(context)
         content_blocks = _build_prompt_blocks(query, image_paths)
         cwd = self._resolve_session_cwd()
+        yield ("cwd", cwd)
         async with self._client_factory(env=env) as client:
             await client.initialize()
             if context.session_id:

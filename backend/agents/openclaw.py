@@ -54,12 +54,14 @@ class OpenClawBackend(AgentBackend):
     ) -> AsyncIterator[AgentEvent]:
         env = _build_env(context)
         content_blocks = _build_prompt_blocks(query, image_paths)
+        cwd = "/tmp"
+        yield ("cwd", cwd)
         async with self._client_factory(env=env) as client:
             await client.initialize()
             if context.session_id:
-                session_id = await client.load_session(context.session_id, cwd="/tmp")
+                session_id = await client.load_session(context.session_id, cwd=cwd)
             else:
-                session_id = await client.new_session(cwd="/tmp")
+                session_id = await client.new_session(cwd=cwd)
             yield ("session", session_id)
             async for event in client.prompt(session_id, content_blocks):
                 yield event

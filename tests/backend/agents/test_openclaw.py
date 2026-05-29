@@ -66,7 +66,9 @@ async def test_openclaw_round_trips_query_and_emits_session_first():
 
     events = [ev async for ev in backend.stream("ping", ctx)]
 
+    # cwd event first (AC-W3-A1), then session, then payload.
     assert events == [
+        ("cwd", "/tmp"),
         ("session", "oc-session"),
         ("text", "hi from openclaw"),
         ("done", None),
@@ -87,7 +89,7 @@ async def test_openclaw_passes_through_tool_events_without_reasoning():
 
     kinds = [ev[0] async for ev in backend.stream("q", ctx)]
     assert "reasoning" not in kinds
-    assert kinds == ["session", "tool", "text", "done"]
+    assert kinds == ["cwd", "session", "tool", "text", "done"]
 
 
 async def test_openclaw_propagates_identity_env():
@@ -113,7 +115,9 @@ async def test_openclaw_resumes_session_when_context_has_id():
     events = [ev async for ev in backend.stream("q", ctx)]
 
     assert factory.captured["client"].loaded_session_id == "prior-oc"
-    assert events[0] == ("session", "prior-oc")
+    # cwd event first, then session
+    assert events[0][0] == "cwd"
+    assert events[1] == ("session", "prior-oc")
 
 
 _PNG_BYTES = bytes.fromhex(
