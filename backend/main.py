@@ -28,6 +28,8 @@ from database import (
     list_agent_instances, get_agent_instance,
     create_agent_instance, update_agent_instance, delete_agent_instance,
     count_conversations_for_agent,
+    get_artifact, list_artifacts_for_conversation,
+    attach_artifacts_to_message,
 )
 from agent_bridge import call_agent, call_agent_stream
 from host_mode import router as host_router
@@ -221,6 +223,79 @@ async def api_delete_conversation(conv_id: str, request: Request):
     _require_conversation_access(user, conv_id)
     delete_conversation(conv_id)
     return {"success": True}
+
+
+# ---------------------------------------------------------------------------
+# Artifacts (Wave 3, A1)
+# ---------------------------------------------------------------------------
+
+def _safe_filename(name: str) -> str:
+    """Strip characters unsafe in a Content-Disposition filename parameter."""
+    return name.replace('"', "").replace("\r", "").replace("\n", "").replace("\\", "")
+
+
+@app.get("/api/artifacts/{artifact_id}/download")
+async def api_artifact_download(artifact_id: str, request: Request):
+    """Return artifact bytes with appropriate Content-Disposition.
+
+    Auth: valid session cookie required (401 if missing).
+    Access: user must own the conversation the artifact belongs to (404 if not).
+    Inline BLOB → Response; file-path → FileResponse (chunked streaming).
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    art = get_artifact(artifact_id)
+    if not art:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+    if art.get("conversation_id"):
+        try:
+            _require_conversation_access(user, art["conversation_id"])
+        except HTTPException:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+    else:
+        raise HTTPException(status_code=403, detail="Artifact not accessible")
+
+    safe_name = _safe_filename(art["name"])
+    disposition = f'attachment; filename="{safe_name}"'
+    mime = art["mime_type"] or "application/octet-stream"
+
+    if art.get("content") is not None:
+        return Response(
+            content=art["content"],
+            media_type=mime,
+            headers={"Content-Disposition": disposition},
+        )
+
+    file_path = art.get("file_path")
+    if not file_path:
+        raise HTTPException(status_code=500, detail="Artifact storage inconsistency")
+
+    return FileResponse(
+        path=file_path,
+        media_type=mime,
+        filename=safe_name,
+        headers={"Content-Disposition": disposition},
+    )
+
+
+@app.get("/api/conversations/{conv_id}/artifacts")
+async def api_conversation_artifacts(conv_id: str, request: Request):
+    """List artifact metadata for a conversation (no content bytes or file paths)."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    _require_conversation_access(user, conv_id)
+    raw = list_artifacts_for_conversation(conv_id)
+    # Strip storage internals — callers receive metadata only, not bytes or paths.
+    artifacts = [
+        {k: v for k, v in a.items() if k not in ("content", "file_path")}
+        for a in raw
+    ]
+    return {"artifacts": artifacts}
 
 
 # ---------------------------------------------------------------------------
@@ -646,6 +721,8 @@ async def api_chat_stream(request: Request):
         full_answer_parts: list[str] = []
         text_started = False
         reasoning_index = 0
+        # Buffer artifact dicts until we have a message_id to attach them to.
+        buffered_artifacts: list[dict] = []
 
         yield frame({"type": "start", "messageId": message_id})
         yield frame({
@@ -669,6 +746,9 @@ async def api_chat_stream(request: Request):
                 image_paths=image_paths,
                 conversation_id=conversation_id,
             ):
+                if kind == "artifact" and isinstance(content, dict):
+                    buffered_artifacts.append(content)
+                    continue
                 if kind == "reasoning":
                     reasoning_index += 1
                     rid = f"r_{reasoning_index}_{uuid.uuid4().hex[:6]}"
@@ -706,9 +786,34 @@ async def api_chat_stream(request: Request):
             yield frame({"type": "text-end", "id": text_id})
 
         full_text = "".join(full_answer_parts).strip()
+        db_message_id: str | None = None
         if full_text:
-            add_message(conversation_id, "assistant", full_text)
+            new_msg = add_message(conversation_id, "assistant", full_text)
+            db_message_id = new_msg["id"] if new_msg else None
             touch_conversation(conversation_id)
+
+        # WU-D: after message row is committed, attach artifacts and emit frame.
+        if buffered_artifacts and db_message_id:
+            artifact_ids = [a["id"] for a in buffered_artifacts if isinstance(a.get("id"), str)]
+            if artifact_ids:
+                attach_artifacts_to_message(artifact_ids, db_message_id)
+            artifact_meta = [
+                {
+                    "id": a.get("id"),
+                    "name": a.get("name"),
+                    "mime_type": a.get("mime_type"),
+                    "size_bytes": a.get("size_bytes"),
+                    "rel_path": a.get("rel_path"),
+                    "created_at": a.get("created_at"),
+                }
+                for a in buffered_artifacts
+            ]
+            yield frame({
+                "type": "data-artifacts",
+                "messageId": db_message_id,
+                "artifacts": artifact_meta,
+            })
+
         conv = get_conversation(conversation_id)
 
         yield frame({

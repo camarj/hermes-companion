@@ -1,6 +1,7 @@
 import type {
   AgentInstance,
   AppConfig,
+  Artifact,
   Conversation,
   CreateAgentPayload,
   KnownPerson,
@@ -159,4 +160,23 @@ export const api = {
       `/api/people/by-name/${encodeURIComponent(name)}`,
       { method: "DELETE" },
     ),
+
+  // ── Artifacts (Wave 3, A1) ───────────────────────────────────────────────
+
+  listConversationArtifacts: (convId: string) =>
+    request<{ artifacts: Artifact[] }>(
+      `/api/conversations/${encodeURIComponent(convId)}/artifacts`,
+    ).then((r) => r.artifacts),
+}
+
+/**
+ * Return a same-origin URL for downloading an artifact.
+ *
+ * Use this as an anchor `href` with the `download` attribute — the browser
+ * sends session cookies automatically for same-origin requests, so auth works
+ * without a fetch-to-blob dance. Large files stream from the server without
+ * being fully buffered in JS.
+ */
+export function artifactDownloadUrl(artifactId: string): string {
+  return `/api/artifacts/${encodeURIComponent(artifactId)}/download`
 }

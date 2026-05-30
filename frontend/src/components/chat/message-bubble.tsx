@@ -2,11 +2,13 @@ import type { UIMessage } from "ai"
 import { Markdown } from "./markdown"
 import { ReasoningBlock } from "./reasoning-block"
 import { cn } from "@/lib/utils"
-import type { User } from "@/lib/types"
+import type { Artifact, User } from "@/lib/types"
+import { artifactDownloadUrl } from "@/lib/api"
 
 type MessageBubbleProps = {
   message: UIMessage
   currentUser: User
+  artifacts?: Artifact[]
 }
 
 /**
@@ -20,7 +22,7 @@ type MessageBubbleProps = {
  *     separately by ChatView's transient thinking bubble; ignored here since
  *     once the tool finishes the answer parts carry the payload.
  */
-export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
+export function MessageBubble({ message, currentUser, artifacts }: MessageBubbleProps) {
   const isUser = message.role === "user"
 
   // Concatenate text parts so a single visual bubble shows the full message
@@ -79,6 +81,41 @@ export function MessageBubble({ message, currentUser }: MessageBubbleProps) {
             )}
           >
             {isUser ? <p className="whitespace-pre-wrap">{text}</p> : <Markdown>{text}</Markdown>}
+          </div>
+        )}
+
+        {!isUser && artifacts && artifacts.length > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {artifacts.map((art) => (
+              <a
+                key={art.id}
+                href={artifactDownloadUrl(art.id)}
+                download={art.name}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg border border-border",
+                  "bg-muted px-3 py-1 text-xs text-muted-foreground",
+                  "hover:border-primary hover:text-primary transition-colors",
+                )}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                {art.name}
+              </a>
+            ))}
           </div>
         )}
       </div>

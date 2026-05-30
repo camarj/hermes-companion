@@ -2,13 +2,14 @@ import { useEffect, useRef } from "react"
 import type { UIMessage } from "ai"
 import { MessageBubble } from "./message-bubble"
 import { ThinkingBubble } from "./thinking-bubble"
-import type { User } from "@/lib/types"
+import type { Artifact, User } from "@/lib/types"
 
 type MessageListProps = {
   messages: UIMessage[]
   currentUser: User
   agentLabel: string
   isStreaming: boolean
+  artifactsByMessageId?: Record<string, Artifact[]>
 }
 
 /**
@@ -43,6 +44,7 @@ export function MessageList({
   currentUser,
   agentLabel,
   isStreaming,
+  artifactsByMessageId = {},
 }: MessageListProps) {
   const endRef = useRef<HTMLDivElement | null>(null)
 
@@ -56,7 +58,12 @@ export function MessageList({
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-8">
       {messages.map((m) => (
-        <MessageBubble key={m.id} message={m} currentUser={currentUser} />
+        <MessageBubble
+          key={m.id}
+          message={m}
+          currentUser={currentUser}
+          artifacts={artifactsByMessageId[m.id]}
+        />
       ))}
       {pendingQuery !== null && (
         <ThinkingBubble label={agentLabel} query={pendingQuery} />

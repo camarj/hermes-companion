@@ -1,6 +1,6 @@
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport, type UIMessage } from "ai"
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { ChatInput } from "./chat-input"
 import { MessageList } from "./message-list"
@@ -8,7 +8,7 @@ import { StartView } from "./start-view"
 import { ThinkingBubble } from "./thinking-bubble"
 import { t, type Lang } from "@/lib/i18n"
 import { api } from "@/lib/api"
-import type { AppConfig, ChatAttachment, User, VoiceMode } from "@/lib/types"
+import type { Artifact, AppConfig, ChatAttachment, User, VoiceMode } from "@/lib/types"
 
 type ConversationMeta = { id: string; title: string | null }
 
@@ -45,6 +45,13 @@ export function ChatView({
     convIdRef.current = conversationId
   }, [conversationId])
 
+  // Map of UIMessage.id → Artifact[] for rendering download chips.
+  // Populated from data-artifacts SSE frames during streaming and from
+  // listConversationArtifacts backfill when a conversation is loaded.
+  const [artifactsByMessageId, setArtifactsByMessageId] = useState<
+    Record<string, Artifact[]>
+  >({})
+
   const pendingAttachmentsRef = useRef<ChatAttachment[]>([])
 
   const transport = useMemo(
@@ -71,10 +78,16 @@ export function ChatView({
 
   const { messages, sendMessage, status, error, setMessages } = useChat({
     transport,
-    onData: (part: { type: string; data?: unknown }) => {
+    onData: (part: { type: string; data?: unknown; messageId?: string; artifacts?: Artifact[] }) => {
       if (part.type === "data-conversation" && part.data) {
         const data = part.data as ConversationMeta
         if (data?.id) onConversationUpdated(data)
+      }
+      if (part.type === "data-artifacts" && part.messageId && part.artifacts?.length) {
+        setArtifactsByMessageId((prev) => ({
+          ...prev,
+          [part.messageId!]: part.artifacts!,
+        }))
       }
     },
     onError: (e) => {
@@ -88,22 +101,40 @@ export function ChatView({
     if (isLive) return
     if (!conversationId) {
       setMessages([])
+      setArtifactsByMessageId({})
       return
     }
     let cancelled = false
+    const uiIdByDbId: Record<string, string> = {}
+
     api
       .getConversation(conversationId)
       .then(({ messages: history }) => {
         if (cancelled) return
-        const ui: UIMessage[] = history.map((m, idx) => ({
-          id: `db_${m.id}_${idx}`,
-          role:
-            m.role === "system"
-              ? "assistant"
-              : (m.role as "user" | "assistant"),
-          parts: [{ type: "text", text: m.content }],
-        }))
+        const ui: UIMessage[] = history.map((m, idx) => {
+          const uiId = `db_${m.id}_${idx}`
+          uiIdByDbId[String(m.id)] = uiId
+          return {
+            id: uiId,
+            role:
+              m.role === "system"
+                ? "assistant"
+                : (m.role as "user" | "assistant"),
+            parts: [{ type: "text", text: m.content }],
+          }
+        })
         setMessages(ui)
+        return api.listConversationArtifacts(conversationId)
+      })
+      .then((artifacts) => {
+        if (cancelled || !artifacts) return
+        const byMsgId: Record<string, Artifact[]> = {}
+        for (const art of artifacts) {
+          if (!art.message_id) continue
+          const uiId = uiIdByDbId[art.message_id] ?? art.message_id
+          byMsgId[uiId] = [...(byMsgId[uiId] ?? []), art]
+        }
+        setArtifactsByMessageId(byMsgId)
       })
       .catch((e) => {
         toast.error(
@@ -164,6 +195,7 @@ export function ChatView({
               currentUser={currentUser}
               agentLabel={agentLabel}
               isStreaming={isStreaming}
+              artifactsByMessageId={artifactsByMessageId}
             />
             {liveThinking && (
               <div className="px-6 pb-2">

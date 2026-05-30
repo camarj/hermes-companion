@@ -74,3 +74,12 @@ export type ChatAttachment = {
   size: number
   content: string
 }
+
+export type Artifact = {
+  id: string
+  name: string
+  mime_type: string
+  size_bytes: number
+  message_id: string | null
+  created_at: string
+}
