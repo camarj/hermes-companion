@@ -332,12 +332,10 @@ Open questions resolved by the OpenClaw spike — see PRD §5.3.
 
 ---
 
-## Wave 3 — Orchestrator + artifacts (DRAFT)
+## Wave 3 — Orchestrator + artifacts
 
-Refined when Wave 2 merges.
-
+- **AC-W3-A1 (DONE):** ✅ Agents emit artifacts (files, code, documents) via a documented convention; artifacts are persisted, previewable, downloadable. Merged PR #39 (A1-1, backend) + PR #40 (A1-2, endpoints + frontend) on 2026-05-30. All 14 spec scenarios passing (214 backend tests, 32 frontend tests). Archive report: sdd/wave3-orchestrator-artifacts/archive-report #654.
 - **AC-W3-T1 (draft):** Tasks can be created from the UI, assigned to an agent, and their lifecycle is reflected in real time.
 - **AC-W3-T2 (draft):** An agent can delegate a sub-task to another agent via `AgentBackend.delegate(...)`; the result flows back.
-- **AC-W3-A1 (draft):** Agents emit artifacts (files, code, documents) via a documented convention; artifacts are persisted, previewable, downloadable.
 - **AC-W3-U1 (draft):** UI supports tabs / split-view for parallel conversations.
 - **AC-W3-U2 (draft):** A task DAG view shows dependencies and progress.
