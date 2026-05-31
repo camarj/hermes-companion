@@ -6,9 +6,11 @@ API (WebSocket proxy in `realtime.py`); text chat is a direct passthrough to
 the external agent (see `agent_bridge.py`).
 """
 
+import asyncio
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, JSONResponse
 
 import config
+import events
 from config import load_dotenv_if_present
 from database import (
     init_db,
@@ -30,6 +33,7 @@ from database import (
     count_conversations_for_agent,
     get_artifact, list_artifacts_for_conversation,
     attach_artifacts_to_message,
+    TASK_STATUSES, create_task, get_task, list_tasks, update_task,
 )
 from agent_bridge import call_agent, call_agent_stream
 from host_mode import router as host_router
@@ -296,6 +300,194 @@ async def api_conversation_artifacts(conv_id: str, request: Request):
         for a in raw
     ]
     return {"artifacts": artifacts}
+
+
+# ---------------------------------------------------------------------------
+# Tasks + real-time push channel (Wave 3, T1)
+# ---------------------------------------------------------------------------
+
+# Valid status transitions — terminal statuses have no outgoing edges.
+# The DB CHECK constraint enforces enum membership; this map enforces the
+# lifecycle DAG (e.g. done → pending is structurally illegal, not just invalid).
+_VALID_TRANSITIONS: dict[str, set[str]] = {
+    "pending":   {"running", "cancelled"},
+    "running":   {"done", "failed", "cancelled"},
+    "done":      set(),
+    "failed":    set(),
+    "cancelled": set(),
+}
+assert set(_VALID_TRANSITIONS) == set(TASK_STATUSES), \
+    "_VALID_TRANSITIONS out of sync with TASK_STATUSES"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _task_event_recipients(task_row: dict) -> list[str]:
+    """Resolve who receives events for this task. T1: the owner only.
+
+    Owner-only keeps this fully in-memory (no DB I/O on the publish path, which
+    shares the event loop with the Realtime WS keepalive). Shared-space fan-out
+    is deferred — this is the single place to broaden it.
+    """
+    return [task_row["user_id"]]
+
+
+@app.post("/api/tasks", status_code=201)
+async def api_create_task(request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Body must be JSON")
+
+    title = (body.get("title") or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required and must be non-empty")
+
+    conv_id = body.get("conversation_id") or None
+    if conv_id:
+        _require_conversation_access(user, conv_id)
+
+    agent_id = body.get("agent_id") or None
+    if agent_id and not get_agent_instance(agent_id):
+        raise HTTPException(status_code=400, detail=f"agent_id {agent_id!r} not found")
+
+    task = create_task(
+        user_id=user["id"],
+        title=title,
+        description=body.get("description") or None,
+        conversation_id=conv_id,
+        agent_id=agent_id,
+    )
+    events.publish_event(
+        _task_event_recipients(task),
+        {
+            "event": "companion.task.created",
+            "conversation_id": task["conversation_id"],
+            "task_id": task["id"],
+            "payload": {k: task[k] for k in
+                        ("id", "title", "status", "conversation_id", "agent_id", "created_at")},
+        },
+    )
+    return JSONResponse(task, status_code=201)
+
+
+@app.get("/api/tasks")
+async def api_list_tasks(request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    conv_id = request.query_params.get("conversation_id") or None
+    return {"tasks": list_tasks(user["id"], conv_id)}
+
+
+@app.patch("/api/tasks/{task_id}")
+async def api_patch_task(task_id: str, request: Request):
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    task = get_task(task_id)
+    if not task or task["user_id"] != user["id"]:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Body must be JSON")
+
+    new_status = body.get("status")
+    status_changed = False
+    if new_status is not None:
+        if new_status not in TASK_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {new_status!r}")
+        allowed = _VALID_TRANSITIONS.get(task["status"], set())
+        status_changed = new_status != task["status"]
+        if status_changed and new_status not in allowed:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Transition {task['status']!r} → {new_status!r} is not allowed",
+            )
+
+    # Only forward status when it actually changes — a same-status PATCH must
+    # not bump updated_at (which signals "something changed").
+    updated = update_task(
+        task_id,
+        status=new_status if status_changed else None,
+        title=body.get("title") or None,
+        description=body.get("description") or None,
+    )
+
+    if status_changed:
+        events.publish_event(
+            _task_event_recipients(updated),
+            {
+                "event": "companion.task.updated",
+                "conversation_id": updated["conversation_id"],
+                "task_id": updated["id"],
+                "payload": {k: updated[k] for k in
+                            ("id", "title", "status", "conversation_id", "updated_at")},
+            },
+        )
+    return updated
+
+
+@app.get("/api/events")
+async def api_events(request: Request):
+    """Long-lived multiplexed SSE push channel — one stream per authenticated user
+    across ALL their conversations. Every frame carries `conversation_id` (null for
+    heartbeats) so the client can route by conversation.
+
+    NO replay: Last-Event-ID is ignored. On reconnect the client MUST call
+    GET /api/tasks to reconcile current task state. Events do not survive a
+    server restart.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id = user["id"]
+
+    def _frame(obj: dict) -> str:
+        return f"data: {json.dumps(obj)}\n\n"
+
+    async def generate():
+        q = events.subscribe(user_id)
+        try:
+            # Prime so proxies flush headers immediately.
+            yield _frame({
+                "event": "companion.heartbeat",
+                "conversation_id": None,
+                "task_id": None,
+                "payload": {"ts": _now_iso()},
+            })
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    evt = await asyncio.wait_for(
+                        q.get(), timeout=events.HEARTBEAT_INTERVAL_SECONDS
+                    )
+                    yield _frame(evt)
+                except asyncio.TimeoutError:
+                    yield _frame({
+                        "event": "companion.heartbeat",
+                        "conversation_id": None,
+                        "task_id": None,
+                        "payload": {"ts": _now_iso()},
+                    })
+        finally:
+            events.unsubscribe(user_id, q)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ---------------------------------------------------------------------------
