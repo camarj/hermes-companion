@@ -335,7 +335,27 @@ Open questions resolved by the OpenClaw spike — see PRD §5.3.
 ## Wave 3 — Orchestrator + artifacts
 
 - **AC-W3-A1 (DONE):** ✅ Agents emit artifacts (files, code, documents) via a documented convention; artifacts are persisted, previewable, downloadable. Merged PR #39 (A1-1, backend) + PR #40 (A1-2, endpoints + frontend) on 2026-05-30. All 14 spec scenarios passing (214 backend tests, 32 frontend tests). Archive report: sdd/wave3-orchestrator-artifacts/archive-report #654.
-- **AC-W3-T1 (draft):** Tasks can be created from the UI, assigned to an agent, and their lifecycle is reflected in real time.
+- **AC-W3-T1:** Tasks as a first-class entity + real-time push channel. A `tasks` table exists in the database. Tasks are createable via `POST /api/tasks` (assigned to a conversation and optionally an agent) and progress through a defined lifecycle (`pending → running → done | failed | cancelled`). Every lifecycle transition is broadcast in real time over `GET /api/events` (one SSE stream per authenticated user, multiplexed across all conversations). Status-transition validation enforces a legal DAG (`pending→running|cancelled`; `running→done|failed|cancelled`; terminal states have no outgoing edges) — illegal transitions return 409. Ownership isolation is enforced: users never see or mutate each other's tasks.
+
+  Scenarios tested (see `tests/backend/api/test_tasks.py`, `tests/backend/api/test_events.py`):
+  1. Task creation happy path → 201 pending + UUID id.
+  2. Empty title → 400, no row inserted.
+  3. Unowned conversation → 403/404.
+  4. Lifecycle transition persisted + `updated_at` bumped.
+  5. Invalid status value → 400.
+  6. PATCH another user's task → 404 (avoids enumeration).
+  7. `GET /api/events` without cookie → 401 before stream.
+  8. `companion.task.created` event delivered over SSE after POST.
+  9. `companion.task.updated` event delivered on PATCH.
+  10. User B does NOT receive events for user A's private tasks.
+  11. Heartbeat emitted after idle interval (injectable `HEARTBEAT_INTERVAL_SECONDS`).
+  12. Client reconnect reconciles via `GET /api/tasks` (no SSE replay in T1).
+  13. `init_db()` is idempotent with tasks table (see `test_db_migrations.py`).
+  14. `GET /api/tasks?conversation_id=` filters correctly.
+  Illegal transition tests (done→pending, running→pending, cancelled→running) → 409.
+
+  Out of scope for T1: event replay/Last-Event-ID, Redis-backed bus, task deletion, T2 agent delegation, U2 DAG view, horizontal scaling.
+  Note: `GET /api/events` is HTTP/SSE — no change to the Realtime WebSocket. Voice clients MAY subscribe.
 - **AC-W3-T2 (draft):** An agent can delegate a sub-task to another agent via `AgentBackend.delegate(...)`; the result flows back.
 - **AC-W3-U1 (draft):** UI supports tabs / split-view for parallel conversations.
 - **AC-W3-U2 (draft):** A task DAG view shows dependencies and progress.
