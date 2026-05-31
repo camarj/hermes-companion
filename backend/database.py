@@ -102,6 +102,10 @@ def init_db():
                 id                  TEXT PRIMARY KEY,
                 conversation_id     TEXT,
                 message_id          TEXT,
+                -- task_id has NO FK to tasks(id): the artifacts table predates tasks
+                -- (A1 shipped first) and SQLite cannot ADD CONSTRAINT retroactively
+                -- without a full table rebuild. The link is enforced in application
+                -- code when task-scoped artifacts land (T2). Intentional omission.
                 task_id             TEXT,
                 name                TEXT NOT NULL,
                 rel_path            TEXT NOT NULL,
@@ -118,6 +122,29 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_artifacts_conv ON artifacts(conversation_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_artifacts_msg  ON artifacts(message_id);
+
+            -- Wave 3 (T1): tasks as a first-class entity.
+            -- conversation_id uses ON DELETE SET NULL — a task outlives a deleted
+            -- conversation, unlike artifacts which cascade. Deliberate lifecycle choice.
+            CREATE TABLE IF NOT EXISTS tasks (
+                id               TEXT PRIMARY KEY,
+                user_id          TEXT NOT NULL,
+                conversation_id  TEXT,
+                agent_id         TEXT,
+                parent_task_id   TEXT,
+                title            TEXT NOT NULL,
+                description      TEXT,
+                status           TEXT NOT NULL DEFAULT 'pending'
+                                   CHECK (status IN ('pending','running','done','failed','cancelled')),
+                created_at       TEXT NOT NULL,
+                updated_at       TEXT NOT NULL,
+                FOREIGN KEY (user_id)         REFERENCES users(id),
+                FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL,
+                FOREIGN KEY (agent_id)        REFERENCES agent_instances(id),
+                FOREIGN KEY (parent_task_id)  REFERENCES tasks(id) ON DELETE SET NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_tasks_conv ON tasks(conversation_id, created_at DESC);
         """)
 
         # ALTER existing conversations table for upgrades from pre-Fase-2 DBs.
@@ -803,3 +830,113 @@ def attach_artifacts_to_message(artifact_ids: list[str], message_id: str) -> int
         return cursor.rowcount
     finally:
         conn.close()
+
+
+# ── Tasks (Wave 3, T1) ─────────────────────────────────────────────────────
+
+TASK_STATUSES = ("pending", "running", "done", "failed", "cancelled")
+
+
+def create_task(
+    *,
+    user_id: str,
+    title: str,
+    description: Optional[str] = None,
+    conversation_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    parent_task_id: Optional[str] = None,
+) -> dict:
+    """Insert a task with status='pending'. Returns the full row dict."""
+    task_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_db()
+    try:
+        conn.execute(
+            """
+            INSERT INTO tasks
+                (id, user_id, conversation_id, agent_id, parent_task_id,
+                 title, description, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+            """,
+            (task_id, user_id, conversation_id, agent_id, parent_task_id,
+             title, description, now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return get_task(task_id)  # type: ignore[return-value]
+
+
+def get_task(task_id: str) -> Optional[dict]:
+    """Single task by id, or None."""
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_tasks(user_id: str, conversation_id: Optional[str] = None) -> list[dict]:
+    """All tasks for a user, ORDER BY updated_at DESC. Optionally filter by conversation."""
+    conn = get_db()
+    try:
+        if conversation_id is not None:
+            rows = conn.execute(
+                "SELECT * FROM tasks WHERE user_id = ? AND conversation_id = ? "
+                "ORDER BY updated_at DESC",
+                (user_id, conversation_id),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM tasks WHERE user_id = ? ORDER BY updated_at DESC",
+                (user_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_task(
+    task_id: str,
+    *,
+    status: Optional[str] = None,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+) -> Optional[dict]:
+    """Partial update; bumps updated_at on any change. Returns updated row or None.
+
+    Caller validates status enum before calling — an invalid value must not reach
+    the DB CHECK (the app-level check gives the user a clean 400, not an IntegrityError).
+    Mirrors the dynamic SET-builder style of update_agent_instance().
+    """
+    sets: list[str] = []
+    args: list = []
+    if status is not None:
+        sets.append("status = ?")
+        args.append(status)
+    if title is not None:
+        sets.append("title = ?")
+        args.append(title)
+    if description is not None:
+        sets.append("description = ?")
+        args.append(description)
+    if not sets:
+        return get_task(task_id)
+
+    sets.append("updated_at = ?")
+    args.append(datetime.now(timezone.utc).isoformat())
+    args.append(task_id)
+
+    conn = get_db()
+    try:
+        cursor = conn.execute(
+            f"UPDATE tasks SET {', '.join(sets)} WHERE id = ?",
+            args,
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            return None
+    finally:
+        conn.close()
+    return get_task(task_id)
